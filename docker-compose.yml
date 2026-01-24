@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  lyrion-playcount-sync:
+    build: .
+    container_name: lyrion-playcount-sync
+    ports:
+      - "5901:5901"
+    volumes:
+      # Montage de la base de données Lyrion (adapter le chemin selon votre installation)
+      - /var/lib/squeezeboxserver:/squeezeboxserver:ro
+      # Montage pour la configuration locale
+      - ./config.yaml:/app/config.yaml:ro
+      # Montage pour les logs
+      - ./logs:/app/logs
+    environment:
+      - DISPLAY=:1
+      - VNC_PASSWORD=password
+    restart: unless-stopped
+    networks:
+      - lyrion-network
+
+networks:
+  lyrion-network:
+    driver: bridge

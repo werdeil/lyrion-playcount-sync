@@ -1,0 +1,26 @@
+# Configuration de Lyrion Playcount Sync
+
+database:
+  # Chemin vers la base de données persist.db de Lyrion
+  path: "/var/lib/squeezeboxserver/prefs/server.prefs"
+  # Ou sous macOS:
+  # path: "~/Library/Application Support/Squeezebox/prefs/server.prefs"
+  backup: true
+
+matching:
+  # Seuil de similarité (0-100)
+  similarity_threshold: 85
+  # Ratio minimum pour considérer une correspondance comme valide
+  ratio_method: "token_sort_ratio"  # token_sort_ratio, ratio, partial_ratio
+
+sync:
+  # Direction de synchronisation : "from_tracks" ou "from_alternative" ou "merge"
+  direction: "merge"
+  # Appliquer les changements automatiquement
+  auto_apply: false
+  # Créer une sauvegarde avant la synchronisation
+  backup_before_sync: true
+
+logging:
+  level: "INFO"
+  file: "playcount_sync.log"
