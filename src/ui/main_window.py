@@ -1,143 +1,425 @@
-"""Fenêtre principale de l'application."""
+"""
+Interface desktop principale pour la synchronisation des playcounts.
+
+Affiche les morceaux manquants et permet de:
+- Visualiser les statistiques
+- Filtrer les morceaux
+- Visualiser les suggestions de match
+- Corriger les sélections
+- Exécuter la synchronisation
+"""
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-import ttkbootstrap as ttk_bs
-from ttkbootstrap.constants import *
-
-from src.utils import setup_logger
-
-logger = setup_logger(__name__)
+from datetime import datetime
+from typing import Optional, Callable
 
 
-class MainWindow:
-    """Fenêtre principale de l'application."""
+class MainWindow(tk.Tk):
+    """Fenêtre principale de l'application Lyrion Playcount Sync."""
     
-    def __init__(self, root: tk.Tk):
+    # Constantes de style
+    TITLE = "Lyrion Playcount Sync"
+    WINDOW_WIDTH = 1000
+    WINDOW_HEIGHT = 700
+    THEME = "darkly"
+    FONT_MAIN = ("Segoe UI", 10)
+    FONT_TITLE = ("Segoe UI", 14, "bold")
+    FONT_SMALL = ("Segoe UI", 9)
+    
+    # Couleurs
+    COLOR_GOOD = "#2ecc71"      # Vert - match > 90%
+    COLOR_WARNING = "#f39c12"   # Orange - match 60-90%
+    COLOR_BAD = "#e74c3c"       # Rouge - match < 60%
+    COLOR_NEUTRAL = "#95a5a6"   # Gris - pas de match
+    
+    def __init__(self, db_path: str = "", on_sync_callback: Optional[Callable] = None):
         """
-        Initialise la fenêtre principale.
+        Initialiser la fenêtre principale.
         
         Args:
-            root: Racine tkinter
+            db_path: Chemin vers la base de données persistante
+            on_sync_callback: Callback appelé lors du sync (optionnel)
         """
-        self.root = root
-        self.root.title("Lyrion Playcount Sync")
-        self.root.geometry("800x600")
+        super().__init__()
         
-        logger.info("Initialisation de la fenêtre principale")
-        self._setup_ui()
+        self.db_path = db_path
+        self.on_sync_callback = on_sync_callback
+        self.selected_tracks = set()
+        self.all_tracks = []
+        self.filtered_tracks = []
+        
+        # Configuration de la fenêtre
+        self.title(self.TITLE)
+        self.geometry(f"{self.WINDOW_WIDTH}x{self.WINDOW_HEIGHT}")
+        self.minsize(800, 600)
+        
+        # Configuration du style
+        self._setup_styles()
+        
+        # Créer l'interface
+        self._create_widgets()
+        self._bind_events()
+        
+        # Mise à jour initiale du statusbar
+        self._update_statusbar()
     
-    def _setup_ui(self):
-        """Configure l'interface utilisateur."""
-        # Menu bar
-        menubar = tk.Menu(self.root)
-        self.root.config(menu=menubar)
+    def _setup_styles(self) -> None:
+        """Configurer les styles personnalisés."""
+        style = ttk.Style()
         
-        file_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Fichier", menu=file_menu)
-        file_menu.add_command(label="Quitter", command=self.root.quit)
-        
-        help_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Aide", menu=help_menu)
-        help_menu.add_command(label="À propos", command=self._show_about)
-        
-        # Cadre principal
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill=BOTH, expand=True, padx=10, pady=10)
-        
-        # Titre
-        title_label = ttk.Label(
-            main_frame,
-            text="Synchronisation des Playcounts",
-            font=("Helvetica", 16, "bold")
+        # Styles pour les cartes de statistiques
+        style.configure(
+            "Stats.TLabel",
+            font=self.FONT_SMALL,
+            background="#2c3e50",
+            foreground="#ecf0f1"
         )
-        title_label.pack(pady=10)
         
-        # Cadre d'état
-        status_frame = ttk.LabelFrame(main_frame, text="État", padding=10)
-        status_frame.pack(fill=X, pady=10)
-        
-        self.status_label = ttk.Label(status_frame, text="Prêt")
-        self.status_label.pack()
-        
-        # Cadre de contrôle
-        control_frame = ttk.LabelFrame(main_frame, text="Contrôle", padding=10)
-        control_frame.pack(fill=X, pady=10)
-        
-        button_frame = ttk.Frame(control_frame)
-        button_frame.pack(fill=X, expand=True)
-        
-        self.load_btn = ttk.Button(
-            button_frame,
-            text="Charger les données",
-            command=self._on_load_data
+        style.configure(
+            "StatsTitle.TLabel",
+            font=("Segoe UI", 11, "bold"),
+            background="#2c3e50",
+            foreground="#3498db"
         )
-        self.load_btn.pack(side=LEFT, padx=5)
         
-        self.match_btn = ttk.Button(
-            button_frame,
-            text="Trouver correspondances",
-            command=self._on_find_matches,
-            state=DISABLED
+        style.configure(
+            "StatsNumber.TLabel",
+            font=("Segoe UI", 18, "bold"),
+            background="#2c3e50",
+            foreground="#2ecc71"
         )
-        self.match_btn.pack(side=LEFT, padx=5)
         
-        self.sync_btn = ttk.Button(
-            button_frame,
-            text="Synchroniser",
-            command=self._on_sync,
-            state=DISABLED
+        style.configure(
+            "Title.TLabel",
+            font=self.FONT_TITLE,
+            foreground="#3498db"
         )
-        self.sync_btn.pack(side=LEFT, padx=5)
         
-        # Cadre de résultats
-        results_frame = ttk.LabelFrame(main_frame, text="Résultats", padding=10)
-        results_frame.pack(fill=BOTH, expand=True, pady=10)
-        
-        # Treeview pour les résultats
-        self.tree = ttk.Treeview(
-            results_frame,
-            columns=("artist", "title", "playcount"),
-            height=15
-        )
-        self.tree.column("#0", width=50, anchor=W)
-        self.tree.column("artist", width=200, anchor=W)
-        self.tree.column("title", width=400, anchor=W)
-        self.tree.column("playcount", width=100, anchor=E)
-        
-        self.tree.heading("#0", text="ID")
-        self.tree.heading("artist", text="Artiste")
-        self.tree.heading("title", text="Titre")
-        self.tree.heading("playcount", text="Plays")
-        
-        self.tree.pack(fill=BOTH, expand=True)
-    
-    def _on_load_data(self):
-        """Callback pour le chargement des données."""
-        messagebox.showinfo("Charger les données", "Fonctionnalité en cours de développement")
-    
-    def _on_find_matches(self):
-        """Callback pour trouver les correspondances."""
-        messagebox.showinfo("Correspondances", "Fonctionnalité en cours de développement")
-    
-    def _on_sync(self):
-        """Callback pour la synchronisation."""
-        messagebox.showinfo("Synchronisation", "Fonctionnalité en cours de développement")
-    
-    def _show_about(self):
-        """Affiche la fenêtre À propos."""
-        messagebox.showinfo(
-            "À propos",
-            "Lyrion Playcount Sync v1.0\n\n"
-            "Synchronise les playcounts entre tracks_persistent "
-            "et alternativeplaycount dans Lyrion."
+        style.configure(
+            "Status.TLabel",
+            font=self.FONT_SMALL,
+            foreground="#95a5a6"
         )
     
-    def set_status(self, message: str):
-        """Définit le message d'état."""
-        self.status_label.config(text=message)
-        self.root.update()
+    def _create_widgets(self) -> None:
+        """Créer tous les widgets de l'interface."""
+        main_frame = ttk.Frame(self)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        self._create_stats_section(main_frame)
+        self._create_search_section(main_frame)
+        self._create_treeview_section(main_frame)
+        self._create_selection_info_section(main_frame)
+        self._create_actions_section(main_frame)
+        self._create_statusbar()
     
-    def run(self):
-        """Démarre la boucle principale."""
-        self.root.mainloop()
+    def _create_stats_section(self, parent: ttk.Frame) -> None:
+        """Créer la zone de statistiques avec 3 cartes."""
+        stats_frame = ttk.LabelFrame(parent, text="📊 Statistiques", padding=10)
+        stats_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        col_frame = ttk.Frame(stats_frame)
+        col_frame.pack(fill=tk.X, expand=True)
+        
+        self._create_stat_card(col_frame, "tracks_persistent", "1,247", tk.LEFT)
+        self._create_stat_card(col_frame, "alternativeplaycount", "1,189", tk.LEFT)
+        self._create_stat_card(col_frame, "Désynchronisés", "58", tk.LEFT)
+    
+    def _create_stat_card(self, parent: ttk.Frame, title: str, value: str, side: str = tk.LEFT) -> None:
+        """Créer une carte de statistique."""
+        card_frame = ttk.Frame(parent, relief=tk.SUNKEN, borderwidth=1)
+        card_frame.pack(side=side, fill=tk.BOTH, expand=True, padx=5)
+        
+        title_label = ttk.Label(card_frame, text=title, style="StatsTitle.TLabel")
+        title_label.pack(pady=(5, 2))
+        
+        value_label = ttk.Label(card_frame, text=value, style="StatsNumber.TLabel")
+        value_label.pack(pady=(0, 5))
+    
+    def _create_search_section(self, parent: ttk.Frame) -> None:
+        """Créer la barre de recherche et le bouton Scanner."""
+        search_frame = ttk.Frame(parent)
+        search_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        search_label = ttk.Label(search_frame, text="🔍 Recherche :")
+        search_label.pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.search_var = tk.StringVar()
+        self.search_var.trace("w", self._on_search_change)
+        
+        search_entry = ttk.Entry(search_frame, textvariable=self.search_var, font=self.FONT_MAIN)
+        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        
+        scanner_btn = ttk.Button(search_frame, text="🔄 Scanner", command=self._on_scanner_click)
+        scanner_btn.pack(side=tk.LEFT)
+    
+    def _create_treeview_section(self, parent: ttk.Frame) -> None:
+        """Créer la Treeview pour afficher les morceaux."""
+        treeview_frame = ttk.LabelFrame(
+            parent,
+            text="Morceaux manquants dans alternativeplaycount",
+            padding=5
+        )
+        treeview_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        columns = ("Artiste", "Titre", "Album", "Plays", "Match?")
+        self.treeview = ttk.Treeview(
+            treeview_frame,
+            columns=columns,
+            height=12,
+            show="headings"
+        )
+        
+        self.treeview.heading("#0", text="")
+        self.treeview.column("#0", width=0, stretch=tk.NO)
+        
+        widths = [120, 200, 150, 60, 80]
+        for col, width in zip(columns, widths):
+            self.treeview.heading(col, text=col)
+            self.treeview.column(col, width=width, anchor=tk.W)
+        
+        vsb = ttk.Scrollbar(treeview_frame, orient=tk.VERTICAL, command=self.treeview.yview)
+        hsb = ttk.Scrollbar(treeview_frame, orient=tk.HORIZONTAL, command=self.treeview.xview)
+        self.treeview.configure(yscroll=vsb.set, xscroll=hsb.set)
+        
+        self.treeview.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        
+        treeview_frame.grid_rowconfigure(0, weight=1)
+        treeview_frame.grid_columnconfigure(0, weight=1)
+        
+        self._populate_treeview_example()
+        
+        self.treeview.bind("<Double-1>", self._on_treeview_double_click)
+        self.treeview.bind("<Button-3>", self._on_treeview_right_click)
+        self.treeview.bind("<Control-Button-1>", self._on_treeview_ctrl_click)
+        self.treeview.bind("<Button-1>", self._on_treeview_click)
+    
+    def _populate_treeview_example(self) -> None:
+        """Remplir la Treeview avec des données d'exemple."""
+        example_data = [
+            ("Queen", "Bohemian Rhapsody", "A Night at the Opera", "42", "✓ 95%"),
+            ("The Beatles", "Hey Jude", "Past Masters", "38", "⚠ 68%"),
+            ("Pink Floyd", "Comfortably Numb", "The Wall", "55", "✗ 45%"),
+            ("Led Zeppelin", "Stairway to Heaven", "Led Zeppelin IV", "71", "✓ 92%"),
+            ("David Bowie", "Space Oddity", "Space Oddity", "28", "⚠ 75%"),
+            ("The Rolling Stones", "Sympathy for the Devil", "Beggars Banquet", "33", "✗ 38%"),
+        ]
+        
+        for data in example_data:
+            tags = self._get_match_tags(data[4])
+            self.treeview.insert("", tk.END, values=data, tags=tags)
+            self.all_tracks.append(data)
+        
+        self.filtered_tracks = self.all_tracks.copy()
+        
+        self.treeview.tag_configure("good", foreground=self.COLOR_GOOD)
+        self.treeview.tag_configure("warning", foreground=self.COLOR_WARNING)
+        self.treeview.tag_configure("bad", foreground=self.COLOR_BAD)
+        self.treeview.tag_configure("neutral", foreground=self.COLOR_NEUTRAL)
+    
+    def _get_match_tags(self, match_str: str) -> tuple:
+        """Obtenir les tags de couleur basés sur le score de match."""
+        if "✓" in match_str:
+            return ("good",)
+        elif "⚠" in match_str:
+            return ("warning",)
+        elif "✗" in match_str:
+            return ("bad",)
+        else:
+            return ("neutral",)
+    
+    def _create_selection_info_section(self, parent: ttk.Frame) -> None:
+        """Créer l'info du compteur de sélection."""
+        info_frame = ttk.Frame(parent)
+        info_frame.pack(fill=tk.X, pady=(0, 5))
+        
+        self.selection_label = ttk.Label(
+            info_frame,
+            text="Sélectionnés : 0/58",
+            font=self.FONT_SMALL
+        )
+        self.selection_label.pack(side=tk.LEFT)
+    
+    def _create_actions_section(self, parent: ttk.Frame) -> None:
+        """Créer la barre d'actions."""
+        actions_frame = ttk.Frame(parent)
+        actions_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Button(actions_frame, text="🔍 Voir détails", command=self._on_details_click).pack(side=tk.LEFT, padx=2)
+        ttk.Button(actions_frame, text="✏️ Corriger sélection", command=self._on_correct_click).pack(side=tk.LEFT, padx=2)
+        ttk.Button(actions_frame, text="⚙️ Config", command=self._on_config_click).pack(side=tk.LEFT, padx=2)
+    
+    def _create_statusbar(self) -> None:
+        """Créer la barre de statut en bas."""
+        statusbar = ttk.Frame(self, relief=tk.SUNKEN, borderwidth=1)
+        statusbar.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        self.db_label = ttk.Label(statusbar, text="", style="Status.TLabel")
+        self.db_label.pack(side=tk.LEFT, padx=5, pady=2)
+        
+        sep_label = ttk.Label(statusbar, text="|", style="Status.TLabel")
+        sep_label.pack(side=tk.LEFT, padx=2)
+        
+        self.clock_label = ttk.Label(statusbar, text="", style="Status.TLabel")
+        self.clock_label.pack(side=tk.RIGHT, padx=5, pady=2)
+        
+        self._update_clock()
+    
+    def _bind_events(self) -> None:
+        """Lier les événements."""
+        pass
+    
+    def _on_search_change(self, *args) -> None:
+        """Appeler quand le texte de recherche change."""
+        search_text = self.search_var.get().lower()
+        
+        for item in self.treeview.get_children():
+            self.treeview.delete(item)
+        
+        self.filtered_tracks = [
+            track for track in self.all_tracks
+            if any(search_text in str(field).lower() for field in track[:3])
+        ]
+        
+        for track in self.filtered_tracks:
+            tags = self._get_match_tags(track[4])
+            self.treeview.insert("", tk.END, values=track, tags=tags)
+    
+    def _on_scanner_click(self) -> None:
+        """Appeler quand le bouton Scanner est cliqué."""
+        messagebox.showinfo("Scanner", "Rafraîchissement des données...")
+    
+    def _on_treeview_double_click(self, event) -> None:
+        """Appeler au double-clic sur un morceau."""
+        selection = self.treeview.selection()
+        if selection:
+            values = self.treeview.item(selection[0], "values")
+            messagebox.showinfo(
+                "Détails du morceau",
+                f"Artiste: {values[0]}\nTitre: {values[1]}\nAlbum: {values[2]}\nPlays: {values[3]}\nMatch: {values[4]}"
+            )
+    
+    def _on_treeview_right_click(self, event) -> None:
+        """Afficher le menu contextuel au clic-droit."""
+        item = self.treeview.identify("item", event.x, event.y)
+        if item:
+            self.treeview.selection_set(item)
+            menu = tk.Menu(self, tearoff=False)
+            menu.add_command(label="Voir suggestions de match", command=self._on_suggestions_click)
+            menu.add_separator()
+            menu.add_command(label="Ignorer ce morceau", command=self._on_ignore_click)
+            menu.add_command(label="Marquer comme résolu", command=self._on_mark_resolved_click)
+            menu.post(event.x_root, event.y_root)
+    
+    def _on_treeview_click(self, event) -> None:
+        """Appeler au clic simple sur un morceau."""
+        item = self.treeview.identify("item", event.x, event.y)
+        if item and item not in self.selected_tracks:
+            self.selected_tracks.add(item)
+            self._update_selection_label()
+    
+    def _on_treeview_ctrl_click(self, event) -> None:
+        """Appeler au Ctrl+clic pour sélection multiple."""
+        item = self.treeview.identify("item", event.x, event.y)
+        if item:
+            if item in self.selected_tracks:
+                self.selected_tracks.remove(item)
+            else:
+                self.selected_tracks.add(item)
+            self._update_selection_label()
+    
+    def _on_details_click(self) -> None:
+        """Appeler quand le bouton Voir détails est cliqué."""
+        if self.selected_tracks:
+            messagebox.showinfo("Détails", f"Détails de {len(self.selected_tracks)} morceau(x)")
+        else:
+            messagebox.showwarning("Aucune sélection", "Veuillez sélectionner au moins un morceau")
+    
+    def _on_correct_click(self) -> None:
+        """Appeler quand le bouton Corriger sélection est cliqué."""
+        if self.selected_tracks:
+            messagebox.showinfo("Correction", "Ouverture du dialogue de correction...")
+        else:
+            messagebox.showwarning("Aucune sélection", "Veuillez sélectionner au moins un morceau")
+    
+    def _on_config_click(self) -> None:
+        """Appeler quand le bouton Config est cliqué."""
+        messagebox.showinfo("Configuration", "Paramètres:\n- Seuil de match\n- Chemins DB\n- Préférences UI")
+    
+    def _on_suggestions_click(self) -> None:
+        """Appeler pour voir les suggestions de match."""
+        messagebox.showinfo("Suggestions", "Affichage des meilleures correspondances...")
+    
+    def _on_ignore_click(self) -> None:
+        """Ignorer un morceau."""
+        messagebox.showinfo("Ignorer", "Ce morceau a été ignoré.")
+    
+    def _on_mark_resolved_click(self) -> None:
+        """Marquer comme résolu."""
+        messagebox.showinfo("Résolu", "Ce morceau a été marqué comme résolu.")
+    
+    def _update_selection_label(self) -> None:
+        """Mettre à jour le label du compteur de sélection."""
+        total = len(self.filtered_tracks)
+        selected = len(self.selected_tracks)
+        self.selection_label.config(text=f"Sélectionnés : {selected}/{total}")
+    
+    def _update_statusbar(self) -> None:
+        """Mettre à jour la barre de statut."""
+        if self.db_path:
+            self.db_label.config(text=f"Connecté à {self.db_path}")
+        else:
+            self.db_label.config(text="Pas de connexion DB")
+    
+    def _update_clock(self) -> None:
+        """Mettre à jour l'horloge."""
+        now = datetime.now().strftime("%H:%M:%S")
+        self.clock_label.config(text=now)
+        self.after(1000, self._update_clock)
+    
+    def add_track(self, artist: str, title: str, album: str, playcount: int, match_score: float) -> None:
+        """Ajouter un morceau à la liste."""
+        if match_score >= 90:
+            match_str = f"✓ {match_score:.0f}%"
+        elif match_score >= 60:
+            match_str = f"⚠ {match_score:.0f}%"
+        else:
+            match_str = f"✗ {match_score:.0f}%"
+        
+        track_data = (artist, title, album, str(playcount), match_str)
+        tags = self._get_match_tags(match_str)
+        
+        self.treeview.insert("", tk.END, values=track_data, tags=tags)
+        self.all_tracks.append(track_data)
+    
+    def clear_tracks(self) -> None:
+        """Effacer tous les morceaux."""
+        for item in self.treeview.get_children():
+            self.treeview.delete(item)
+        self.all_tracks.clear()
+        self.filtered_tracks.clear()
+        self.selected_tracks.clear()
+    
+    def get_selected_tracks(self) -> list:
+        """Obtenir les morceaux sélectionnés."""
+        selected = []
+        for item in self.selected_tracks:
+            values = self.treeview.item(item, "values")
+            selected.append(values)
+        return selected
+    
+    def update_status(self, message: str) -> None:
+        """Mettre à jour le message de statut."""
+        self.db_label.config(text=message)
+    
+    def show_message(self, title: str, message: str, message_type: str = "info") -> None:
+        """Afficher un message à l'utilisateur."""
+        if message_type == "warning":
+            messagebox.showwarning(title, message)
+        elif message_type == "error":
+            messagebox.showerror(title, message)
+        else:
+            messagebox.showinfo(title, message)
