@@ -216,7 +216,7 @@ class Application:
             
             # Créer la fenêtre principale (MainWindow hérite de tk.Tk)
             db_path = str(self.config.database.path)
-            self.window = MainWindow(db_path=db_path)
+            self.window = MainWindow(db_path=db_path, db_manager=self.db)
             
             self.logger.info("✓ Interface chargée")
             

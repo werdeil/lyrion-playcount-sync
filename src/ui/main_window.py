@@ -33,17 +33,19 @@ class MainWindow(tk.Tk):
     COLOR_BAD = "#e74c3c"       # Rouge - match < 60%
     COLOR_NEUTRAL = "#95a5a6"   # Gris - pas de match
     
-    def __init__(self, db_path: str = "", on_sync_callback: Optional[Callable] = None):
+    def __init__(self, db_path: str = "", db_manager = None, on_sync_callback: Optional[Callable] = None):
         """
         Initialiser la fenêtre principale.
         
         Args:
             db_path: Chemin vers la base de données persistante
+            db_manager: Instance de DatabaseManager (optionnel)
             on_sync_callback: Callback appelé lors du sync (optionnel)
         """
         super().__init__()
         
         self.db_path = db_path
+        self.db_manager = db_manager
         self.on_sync_callback = on_sync_callback
         self.selected_tracks = set()
         self.all_tracks = []
@@ -60,6 +62,10 @@ class MainWindow(tk.Tk):
         # Créer l'interface
         self._create_widgets()
         self._bind_events()
+        
+        # Charger les données depuis la BD si disponible
+        if self.db_manager:
+            self._load_tracks_from_db()
         
         # Mise à jour initiale du statusbar
         self._update_statusbar()
@@ -373,6 +379,73 @@ class MainWindow(tk.Tk):
             self.db_label.config(text=f"Connecté à {self.db_path}")
         else:
             self.db_label.config(text="Pas de connexion DB")
+    
+    def _load_tracks_from_db(self) -> None:
+        """Charger tous les tracks depuis la base de données."""
+        if not self.db_manager:
+            return
+        
+        try:
+            # Récupérer tous les tracks depuis tracks_persistent
+            with self.db_manager.cursor(commit=False) as cursor:
+                cursor.execute("""
+                    SELECT 
+                        tp.urlmd5,
+                        tp.url,
+                        tp.playCount,
+                        tp.lastPlayed,
+                        tp.rating,
+                        CASE WHEN ap.urlmd5 IS NULL THEN 0 ELSE 1 END as has_alternative
+                    FROM tracks_persistent tp
+                    LEFT JOIN alternativeplaycount ap ON tp.urlmd5 = ap.urlmd5
+                    ORDER BY tp.url
+                """)
+                
+                for row in cursor.fetchall():
+                    # Extraire le titre et l'artiste de l'URL (format: artiste/album/titre)
+                    url = row[1] or 'Unknown'
+                    parts = url.split('/')
+                    
+                    if len(parts) >= 3:
+                        artist = parts[-3]
+                        album = parts[-2]
+                        title = parts[-1].replace('.mp3', '').replace('.flac', '')
+                    elif len(parts) >= 2:
+                        artist = parts[-2]
+                        title = parts[-1].replace('.mp3', '').replace('.flac', '')
+                        album = 'Unknown Album'
+                    else:
+                        artist = 'Unknown Artist'
+                        title = url.replace('.mp3', '').replace('.flac', '')
+                        album = 'Unknown Album'
+                    
+                    track_data = {
+                        'urlmd5': row[0],
+                        'title': title,
+                        'artist': artist,
+                        'album': album,
+                        'url': url,
+                        'playcount': row[2] or 0,
+                        'lastplayed': row[3],
+                        'rating': row[4],
+                        'has_alternative': row[5] == 1
+                    }
+                    self.all_tracks.append(track_data)
+                    
+                    # Ajouter à la Treeview
+                    match_score = 100 if track_data['has_alternative'] else 0
+                    self.add_track(
+                        artist=track_data['artist'],
+                        title=track_data['title'],
+                        album=track_data['album'],
+                        playcount=track_data['playcount'],
+                        match_score=match_score
+                    )
+            
+            self.filtered_tracks = self.all_tracks.copy()
+            
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Erreur lors du chargement des tracks: {e}")
     
     def _update_clock(self) -> None:
         """Mettre à jour l'horloge."""
