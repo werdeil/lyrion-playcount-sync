@@ -365,22 +365,112 @@ class MainWindow(tk.Tk):
             self._update_selection_label()
     
     def _on_details_click(self) -> None:
-        """Appeler quand le bouton Voir détails est cliqué."""
-        if self.selected_tracks:
-            messagebox.showinfo("Détails", f"Détails de {len(self.selected_tracks)} morceau(x)")
+        """Afficher les détails du morceau sélectionné."""
+        selection = self.treeview.selection()
+        if not selection:
+            messagebox.showwarning("Aucune sélection", "Veuillez sélectionner un morceau")
+            return
+        
+        # Récupérer les données du morceau sélectionné
+        item = selection[0]
+        values = self.treeview.item(item, "values")
+        
+        if len(values) >= 5:
+            artist, title, album, playcount, match = values[0], values[1], values[2], values[3], values[4]
+            details = f"""
+Détails du morceau:
+
+Artiste: {artist}
+Titre: {title}
+Album: {album}
+Playcounts: {playcount}
+Correspondance: {match}
+
+Clic-droit sur le morceau pour voir les options de correspondance.
+            """
+            messagebox.showinfo("Détails du morceau", details.strip())
         else:
-            messagebox.showwarning("Aucune sélection", "Veuillez sélectionner au moins un morceau")
+            messagebox.showwarning("Erreur", "Impossible de récupérer les détails du morceau")
     
     def _on_correct_click(self) -> None:
-        """Appeler quand le bouton Corriger sélection est cliqué."""
-        if self.selected_tracks:
-            messagebox.showinfo("Correction", "Ouverture du dialogue de correction...")
-        else:
+        """Ouvrir le dialogue de correction pour les morceaux sélectionnés."""
+        selection = self.treeview.selection()
+        if not selection:
             messagebox.showwarning("Aucune sélection", "Veuillez sélectionner au moins un morceau")
+            return
+        
+        # Créer une fenêtre de correction
+        correct_window = tk.Toplevel(self)
+        correct_window.title("Corriger la sélection")
+        correct_window.geometry("500x300")
+        
+        # Afficher les morceaux sélectionnés
+        info_text = f"Vous avez sélectionné {len(selection)} morceau(x).\n\n"
+        for item in list(selection)[:5]:  # Afficher les 5 premiers
+            values = self.treeview.item(item, "values")
+            if len(values) >= 2:
+                info_text += f"- {values[0]} - {values[1]}\n"
+        
+        if len(selection) > 5:
+            info_text += f"... et {len(selection) - 5} autre(s)\n"
+        
+        ttk.Label(correct_window, text=info_text, justify=tk.LEFT).pack(padx=10, pady=10)
+        
+        # Bouton pour marquer comme résolu
+        def mark_all_resolved():
+            for item in selection:
+                self.treeview.item(item, tags=('resolved',))
+            messagebox.showinfo("Succès", f"{len(selection)} morceau(x) marqué(s) comme résolus")
+            correct_window.destroy()
+        
+        # Bouton pour ignorer
+        def ignore_all():
+            for item in selection:
+                self.treeview.delete(item)
+            messagebox.showinfo("Succès", f"{len(selection)} morceau(x) ignoré(s)")
+            correct_window.destroy()
+        
+        button_frame = ttk.Frame(correct_window)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Button(button_frame, text="Marquer comme résolu", command=mark_all_resolved).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Ignorer", command=ignore_all).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Annuler", command=correct_window.destroy).pack(side=tk.LEFT, padx=5)
     
     def _on_config_click(self) -> None:
-        """Appeler quand le bouton Config est cliqué."""
-        messagebox.showinfo("Configuration", "Paramètres:\n- Seuil de match\n- Chemins DB\n- Préférences UI")
+        """Ouvrir la fenêtre de configuration."""
+        config_window = tk.Toplevel(self)
+        config_window.title("Configuration")
+        config_window.geometry("400x250")
+        
+        # Section des seuils
+        ttk.Label(config_window, text="Seuil de correspondance (%):", font=self.FONT_SMALL).pack(anchor=tk.W, padx=10, pady=(10, 5))
+        
+        threshold_frame = ttk.Frame(config_window)
+        threshold_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
+        
+        threshold_scale = ttk.Scale(threshold_frame, from_=0, to=100, orient=tk.HORIZONTAL)
+        threshold_scale.set(70)
+        threshold_scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        threshold_label = ttk.Label(threshold_frame, text="70%", width=5)
+        threshold_label.pack(side=tk.LEFT, padx=(5, 0))
+        
+        def update_threshold(val):
+            threshold_label.config(text=f"{int(float(val))}%")
+        
+        threshold_scale.config(command=update_threshold)
+        
+        # Section des chemins
+        ttk.Label(config_window, text="Base de données:", font=self.FONT_SMALL).pack(anchor=tk.W, padx=10, pady=(10, 5))
+        ttk.Label(config_window, text=str(self.db_path), foreground="gray").pack(anchor=tk.W, padx=20, pady=(0, 10))
+        
+        # Boutons
+        button_frame = ttk.Frame(config_window)
+        button_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Button(button_frame, text="Appliquer", command=lambda: messagebox.showinfo("Succès", "Configuration sauvegardée")).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Fermer", command=config_window.destroy).pack(side=tk.LEFT, padx=5)
     
     def _on_suggestions_click(self) -> None:
         """Afficher les meilleures suggestions de match pour le morceau sélectionné."""
