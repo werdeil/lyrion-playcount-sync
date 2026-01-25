@@ -19,7 +19,7 @@ from typing import Optional
 from src.ui.main_window import MainWindow
 from src.database.connection import DatabaseManager
 from src.database.queries import SyncDetector
-from src.matching.track_matcher import TrackMatcher
+from src.matching.fuzzy_matcher import TrackMatcher
 from src.utils.logger import setup_logger, get_logger
 from src.utils.config import Config
 

@@ -350,6 +350,26 @@ class SyncOperation:
                 f"missing_urlmd5={self.missing_urlmd5!r})")
 
 
+@dataclass
+class TrackMatch:
+    """
+    Représente une correspondance entre deux morceaux.
+    
+    Attributes:
+        source_track: Morceau source
+        target_track: Morceau cible correspondant
+        similarity_score: Score de similarité (0-100)
+    """
+    source_track: Track
+    target_track: Track
+    similarity_score: float
+    
+    def __post_init__(self) -> None:
+        """Valider le score."""
+        if not 0 <= self.similarity_score <= 100:
+            raise ValueError(f"Score invalide: {self.similarity_score} (doit être 0-100)")
+
+
 # Type aliases pour faciliter les annotations
 TrackList = list[Track]
 MatchSuggestionList = list[MatchSuggestion]

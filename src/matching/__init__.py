@@ -1,5 +1,5 @@
 """Package matching."""
 
-from src.matching.fuzzy_matcher import FuzzyMatcher
+from src.matching.fuzzy_matcher import TrackMatcher
 
-__all__ = ['FuzzyMatcher']
+__all__ = ['TrackMatcher']
