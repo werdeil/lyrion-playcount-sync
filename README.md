@@ -63,12 +63,12 @@ git clone https://github.com/ton-user/lyrion-playcount-sync.git
 cd lyrion-playcount-sync
 
 # Configurer
-cp .env.example .env
+cp config/.env.example .env
 nano .env
 # ➜ Modifier LYRION_DATA_PATH selon votre système
 
 # Lancer
-docker-compose up -d
+docker-compose -f config/docker-compose.yml up -d
 
 # Accéder
 # 🌐 Navigateur : http://localhost:6080/vnc.html
@@ -77,7 +77,7 @@ docker-compose up -d
 
 **Arrêter l'application :**
 ```bash
-docker-compose down
+docker-compose -f config/docker-compose.yml down
 ```
 
 ### Option 2 : Installation Locale (Développement)
@@ -91,11 +91,11 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Configurer
-cp config.yaml.example config.yaml
+cp config/config.yaml.example config.yaml
 nano config.yaml
 
 # Lancer
-python3 src/main.py
+python3 scripts/run.py
 ```
 
 ## 📖 Guide d'Utilisation
@@ -210,13 +210,18 @@ lyrion-playcount-sync/
 │       ├── logger.py           # Logging
 │       └── decorators.py       # Utilitaires
 ├── tests/                      # Suite de tests (31 tests ✅)
-├── config.yaml.example         # Template configuration
+├── config/                     # Fichiers de configuration
+│   ├── config.yaml.example     # Template configuration
+│   ├── Dockerfile              # Image Docker
+│   ├── docker-compose.yml      # Orchestration Docker
+│   ├── .env.example            # Variables d'environnement
+│   └── supervisord.conf        # Configuration supervisord
+├── scripts/                    # Scripts utilitaires
+│   ├── run.py                  # Point d'entrée smart
+│   ├── setup.sh                # Installation
+│   ├── entrypoint.sh           # Script de démarrage
+│   └── ...
 ├── requirements.txt            # Dépendances Python
-├── Dockerfile                  # Image Docker
-├── docker-compose.yml          # Orchestration Docker
-├── .env.example                # Variables d'environnement
-├── entrypoint.sh              # Script de démarrage
-├── run.py                      # Point d'entrée smart
 └── README.md                   # Ce fichier
 ```
 
@@ -309,7 +314,7 @@ sudo killall -9 perl
 sleep 5
 
 # Relancer l'application
-docker-compose restart lyrion-sync
+docker-compose -f config/docker-compose.yml restart lyrion-sync
 ```
 
 ### "Permission denied" sur persist.db
@@ -325,7 +330,7 @@ chmod 666 /path/to/lyrion/persist.db
 chmod 755 /path/to/lyrion/
 
 # Corriger (Docker)
-docker-compose exec lyrion-sync chmod 666 /lyrion-data/persist.db
+docker-compose -f config/docker-compose.yml exec lyrion-sync chmod 666 /lyrion-data/persist.db
 ```
 
 ### Aucune suggestion de match
@@ -355,17 +360,17 @@ matching:
 
 1. Consulter les logs :
    ```bash
-   docker-compose logs -f lyrion-sync | grep -i error
+   docker-compose -f config/docker-compose.yml logs -f lyrion-sync | grep -i error
    ```
 
 2. Vérifier la configuration :
    ```bash
-   docker-compose exec lyrion-sync python3 run.py --check
+   docker-compose -f config/docker-compose.yml exec lyrion-sync python3 scripts/run.py --check
    ```
 
 3. Restaurer depuis backup :
    ```bash
-   docker-compose exec lyrion-sync ls -la /app/backups/
+   docker-compose -f config/docker-compose.yml exec lyrion-sync ls -la /app/backups/
    ```
 
 ## 📝 Cas d'Usage
@@ -377,7 +382,7 @@ matching:
 LYRION_DATA_PATH=/volume1/docker/squeezebox-lms/prefs
 
 # Démarrer
-docker-compose up -d
+docker-compose -f config/docker-compose.yml up -d
 ```
 
 ### Linux Standalone
@@ -387,7 +392,7 @@ docker-compose up -d
 LYRION_DATA_PATH=/var/lib/squeezeboxserver/prefs
 
 # Avec sudo si nécessaire
-sudo docker-compose up -d
+sudo docker-compose -f config/docker-compose.yml up -d
 
 # Permissions
 sudo chmod 666 /var/lib/squeezeboxserver/prefs/persist.db
@@ -400,7 +405,7 @@ sudo chmod 666 /var/lib/squeezeboxserver/prefs/persist.db
 LYRION_DATA_PATH=/Users/$(whoami)/Library/Application Support/Squeezebox/prefs
 
 # Lancer
-docker-compose up -d
+docker-compose -f config/docker-compose.yml up -d
 ```
 
 ### Windows
@@ -410,7 +415,7 @@ docker-compose up -d
 LYRION_DATA_PATH=C:\Users\YourUsername\AppData\Local\Squeezebox\prefs
 
 # Lancer
-docker-compose up -d
+docker-compose -f config/docker-compose.yml up -d
 ```
 
 ## 🔄 Mise à Jour
@@ -422,10 +427,10 @@ docker-compose up -d
 git pull origin main
 
 # Reconstruire l'image Docker
-docker-compose build --no-cache
+docker-compose -f config/docker-compose.yml build --no-cache
 
 # Redémarrer
-docker-compose up -d
+docker-compose -f config/docker-compose.yml up -d
 ```
 
 ### Sauvegarde Avant Mise à Jour
@@ -438,7 +443,7 @@ cp config.yaml config.yaml.backup
 cp -r logs logs_backup
 
 # Sauvegarder la BD
-docker-compose exec lyrion-sync cp /lyrion-data/persist.db \
+docker-compose -f config/docker-compose.yml exec lyrion-sync cp /lyrion-data/persist.db \
   /lyrion-data/persist.db.backup.$(date +%Y%m%d)
 
 # Vérifier les backups

@@ -160,7 +160,7 @@ Deux options :
 
 ### Docker (Recommandé)
 ```bash
-docker-compose up -d
+docker-compose -f config/docker-compose.yml up -d
 # Accès : http://localhost:6080/vnc.html
 ```
 

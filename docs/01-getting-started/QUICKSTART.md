@@ -8,14 +8,14 @@ Démarrer Lyrion Playcount Sync en 5 minutes.
 # 1. Cloner et configurer
 git clone https://github.com/ton-user/lyrion-playcount-sync.git
 cd lyrion-playcount-sync
-cp .env.example .env
+cp config/.env.example .env
 
 # 2. Éditer .env
 nano .env
 # ➜ Changer LYRION_DATA_PATH selon votre système
 
 # 3. Lancer
-docker-compose up -d
+docker-compose -f config/docker-compose.yml up -d
 
 # 4. Accéder
 # Navigateur : http://localhost:6080/vnc.html
@@ -86,13 +86,13 @@ sync:
 
 ```bash
 # Voir les logs
-docker-compose logs lyrion-sync
+docker-compose -f config/docker-compose.yml logs lyrion-sync
 
 # Tester la connexion
-docker-compose exec lyrion-sync python3 run.py --check
+docker-compose -f config/docker-compose.yml exec lyrion-sync python3 scripts/run.py --check
 
 # Redémarrer si besoin
-docker-compose restart lyrion-sync
+docker-compose -f config/docker-compose.yml restart lyrion-sync
 ```
 
 ## 📚 Après les premiers pas
