@@ -434,6 +434,12 @@ class MainWindow(tk.Tk):
                 """)
                 
                 for row in cursor.fetchall():
+                    has_alternative = row[5] == 1
+                    
+                    # N'afficher que les tracks SANS alternative (désynchronisés)
+                    if has_alternative:
+                        continue
+                    
                     # Extraire le titre et l'artiste de l'URL (format: artiste/album/titre)
                     url = row[1] or 'Unknown'
                     parts = url.split('/')
@@ -460,13 +466,12 @@ class MainWindow(tk.Tk):
                         'playcount': row[2] or 0,
                         'lastplayed': row[3],
                         'rating': row[4],
-                        'has_alternative': row[5] == 1
+                        'has_alternative': has_alternative
                     }
                     self.all_tracks.append(track_data)
                     
-                    # Préparer l'affichage
-                    match_score = 100 if track_data['has_alternative'] else 0
-                    match_str = f"✓ {match_score:.0f}%" if track_data['has_alternative'] else "✗ 0%"
+                    # Afficher comme manquant
+                    match_str = "✗ Manquant"
                     
                     tracks_to_display.append((
                         track_data['artist'],
