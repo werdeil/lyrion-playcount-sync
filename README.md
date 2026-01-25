@@ -4,6 +4,22 @@
 
 > **⚠️ IMPORTANT** : Arrêtez Lyrion avant toute synchronisation pour éviter la corruption de la base de données.
 
+## 📚 Documentation
+
+**Accédez à la documentation complète dans le dossier [`docs/`](docs/)**
+
+| Besoin | Lien |
+|--------|------|
+| **Démarrage rapide** | [Quick Start](docs/01-getting-started/QUICKSTART.md) |
+| **Vue d'ensemble** | [Overview](docs/01-getting-started/OVERVIEW.md) |
+| **Installation Docker** | [Docker Guide](docs/02-installation/DOCKER.md) |
+| **Installation locale** | [Local Setup](docs/02-installation/LOCAL.md) |
+| **Configuration** | [Configuration Guide](docs/03-configuration/CONFIG.md) |
+| **Guide utilisateur** | [User Guide](docs/04-usage/USER_GUIDE.md) |
+| **Architecture** | [Technical Overview](docs/05-architecture/OVERVIEW.md) |
+| **Dépannage** | [Troubleshooting](docs/02-installation/TROUBLESHOOTING.md) |
+| **Index complet** | [Documentation Index](docs/INDEX.md) |
+
 ## 🎯 Problème Résolu
 
 Lyrion utilise deux tables pour stocker les playcounts :
