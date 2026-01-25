@@ -128,9 +128,34 @@ class MainWindow(tk.Tk):
         col_frame = ttk.Frame(stats_frame)
         col_frame.pack(fill=tk.X, expand=True)
         
-        self._create_stat_card(col_frame, "tracks_persistent", "1,247", tk.LEFT)
-        self._create_stat_card(col_frame, "alternativeplaycount", "1,189", tk.LEFT)
-        self._create_stat_card(col_frame, "Désynchronisés", "58", tk.LEFT)
+        # Calculer les statistiques
+        self.total_persistent = 0
+        self.total_alternative = 0
+        self.desynchronized = 0
+        
+        if self.db_manager:
+            try:
+                with self.db_manager.cursor(commit=False) as cursor:
+                    # Count total in tracks_persistent
+                    cursor.execute("SELECT COUNT(*) FROM tracks_persistent")
+                    self.total_persistent = cursor.fetchone()[0]
+                    
+                    # Count total in alternativeplaycount
+                    cursor.execute("SELECT COUNT(*) FROM alternativeplaycount")
+                    self.total_alternative = cursor.fetchone()[0]
+                    
+                    # Count desynchronized (in persistent but not in alternative)
+                    cursor.execute("""
+                        SELECT COUNT(*) FROM tracks_persistent tp 
+                        WHERE tp.urlmd5 NOT IN (SELECT urlmd5 FROM alternativeplaycount)
+                    """)
+                    self.desynchronized = cursor.fetchone()[0]
+            except Exception as e:
+                print(f"Erreur lors du calcul des stats: {e}")
+        
+        self._create_stat_card(col_frame, "tracks_persistent", f"{self.total_persistent:,}", tk.LEFT)
+        self._create_stat_card(col_frame, "alternativeplaycount", f"{self.total_alternative:,}", tk.LEFT)
+        self._create_stat_card(col_frame, "Désynchronisés", f"{self.desynchronized:,}", tk.LEFT)
     
     def _create_stat_card(self, parent: ttk.Frame, title: str, value: str, side: str = tk.LEFT) -> None:
         """Créer une carte de statistique."""
