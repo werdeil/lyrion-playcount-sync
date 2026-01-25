@@ -13,6 +13,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from datetime import datetime
 from typing import Optional, Callable
+from urllib.parse import unquote
 
 
 class MainWindow(tk.Tk):
@@ -285,6 +286,13 @@ class MainWindow(tk.Tk):
         ttk.Button(actions_frame, text="✏️ Corriger sélection", command=self._on_correct_click).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions_frame, text="⚙️ Config", command=self._on_config_click).pack(side=tk.LEFT, padx=2)
     
+    def _decode_url_parts(self, url: str) -> list:
+        """Décoder les parties d'une URL pour éviter les caractères encodés."""
+        # Décoder la URL complète
+        decoded_url = unquote(url)
+        parts = decoded_url.split('/')
+        return parts
+    
     def _create_statusbar(self) -> None:
         """Créer la barre de statut en bas."""
         statusbar = ttk.Frame(self, relief=tk.SUNKEN, borderwidth=1)
@@ -517,7 +525,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                     cursor.execute("SELECT urlmd5, url FROM alternativeplaycount LIMIT 50")
                     for row in cursor.fetchall():
                         url = row[1] or 'Unknown'
-                        parts = url.split('/')
+                        parts = self._decode_url_parts(url)
                         
                         if len(parts) >= 3:
                             alt_artist = parts[-3]
@@ -619,7 +627,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                 for row in cursor.fetchall():
                     url = row[1] or 'Unknown'
                     # Extraire artiste/titre
-                    parts = url.split('/')
+                    parts = self._decode_url_parts(url)
                     if len(parts) >= 3:
                         artist = parts[-3]
                         title = parts[-1].replace('.mp3', '').replace('.flac', '')
@@ -654,7 +662,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                 for row in cursor.fetchall():
                     # Extraire le titre et l'artiste de l'URL
                     url = row[1] or 'Unknown'
-                    parts = url.split('/')
+                    parts = self._decode_url_parts(url)
                     
                     if len(parts) >= 3:
                         artist = parts[-3]
