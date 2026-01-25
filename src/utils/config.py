@@ -10,6 +10,7 @@ Gère la configuration globale de l'application avec:
 
 import yaml
 import json
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional
 from dataclasses import dataclass, asdict
@@ -22,10 +23,20 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DatabaseConfig:
     """Configuration de la base de données."""
-    path: str = "/config/prefs/persist.db"
+    path: str = None  # Will be set from env or default
     auto_backup: bool = True
     backup_on_startup: bool = True
     backup_retention_days: int = 7
+    
+    def __post_init__(self):
+        """Initialize path from environment or use default."""
+        if self.path is None:
+            # Try to read from environment variable first
+            env_path = os.getenv('LYRION_DATA_PATH')
+            if env_path:
+                self.path = str(Path(env_path) / 'persist.db')
+            else:
+                self.path = "/config/prefs/persist.db"
 
 
 @dataclass

@@ -11,6 +11,7 @@ Point d'entrée de l'application qui coordonne:
 """
 
 import sys
+import os
 import tkinter as tk
 from pathlib import Path
 from typing import Optional
@@ -80,6 +81,12 @@ class Application:
             # Charger la configuration
             self.config = Config.instance()
             
+            # Override database path from environment if set
+            lyrion_path = os.getenv('LYRION_DATA_PATH')
+            if lyrion_path:
+                persist_db = Path(lyrion_path) / 'persist.db'
+                self.config.database.path = str(persist_db)
+            
             # Vérifier si le fichier de config existe
             config_path = Path(self.config_file)
             if not config_path.exists():
@@ -105,6 +112,11 @@ class Application:
                 if not success:
                     self.logger.error("Impossible de charger la configuration")
                     return False
+            
+            # Réappliquer l'override après le chargement du fichier
+            if lyrion_path:
+                persist_db = Path(lyrion_path) / 'persist.db'
+                self.config.database.path = str(persist_db)
             
             # Valider la configuration
             self.config.validate()
