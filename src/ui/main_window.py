@@ -33,19 +33,21 @@ class MainWindow(tk.Tk):
     COLOR_BAD = "#e74c3c"       # Rouge - match < 60%
     COLOR_NEUTRAL = "#95a5a6"   # Gris - pas de match
     
-    def __init__(self, db_path: str = "", db_manager = None, on_sync_callback: Optional[Callable] = None):
+    def __init__(self, db_path: str = "", db_manager = None, matcher = None, on_sync_callback: Optional[Callable] = None):
         """
         Initialiser la fenêtre principale.
         
         Args:
             db_path: Chemin vers la base de données persistante
             db_manager: Instance de DatabaseManager (optionnel)
+            matcher: Instance de TrackMatcher (optionnel)
             on_sync_callback: Callback appelé lors du sync (optionnel)
         """
         super().__init__()
         
         self.db_path = db_path
         self.db_manager = db_manager
+        self.matcher = matcher
         self.on_sync_callback = on_sync_callback
         self.selected_tracks = set()
         self.all_tracks = []
@@ -416,7 +418,30 @@ class MainWindow(tk.Tk):
             self.treeview.insert('', 'end', values=('Chargement...', 'Veuillez patienter', '(En cours)', '...', '...'))
             self.update()
             
-            # Récupérer TOUS les tracks d'abord (sans les afficher)
+            # Récupérer d'abord TOUS les morceaux de alternativeplaycount pour le matching
+            alternative_tracks = {}
+            with self.db_manager.cursor(commit=False) as cursor:
+                cursor.execute("SELECT urlmd5, url FROM alternativeplaycount")
+                for row in cursor.fetchall():
+                    url = row[1] or 'Unknown'
+                    # Extraire artiste/titre
+                    parts = url.split('/')
+                    if len(parts) >= 3:
+                        artist = parts[-3]
+                        title = parts[-1].replace('.mp3', '').replace('.flac', '')
+                    elif len(parts) >= 2:
+                        artist = parts[-2]
+                        title = parts[-1].replace('.mp3', '').replace('.flac', '')
+                    else:
+                        artist = 'Unknown'
+                        title = url
+                    alternative_tracks[row[0]] = {
+                        'artist': artist,
+                        'title': title,
+                        'url': url
+                    }
+            
+            # Récupérer les tracks manquants et les matcher
             tracks_to_display = []
             
             with self.db_manager.cursor(commit=False) as cursor:
@@ -426,21 +451,14 @@ class MainWindow(tk.Tk):
                         tp.url,
                         tp.playCount,
                         tp.lastPlayed,
-                        tp.rating,
-                        CASE WHEN ap.urlmd5 IS NULL THEN 0 ELSE 1 END as has_alternative
+                        tp.rating
                     FROM tracks_persistent tp
-                    LEFT JOIN alternativeplaycount ap ON tp.urlmd5 = ap.urlmd5
+                    WHERE tp.urlmd5 NOT IN (SELECT urlmd5 FROM alternativeplaycount)
                     ORDER BY tp.url
                 """)
                 
                 for row in cursor.fetchall():
-                    has_alternative = row[5] == 1
-                    
-                    # N'afficher que les tracks SANS alternative (désynchronisés)
-                    if has_alternative:
-                        continue
-                    
-                    # Extraire le titre et l'artiste de l'URL (format: artiste/album/titre)
+                    # Extraire le titre et l'artiste de l'URL
                     url = row[1] or 'Unknown'
                     parts = url.split('/')
                     
@@ -466,12 +484,25 @@ class MainWindow(tk.Tk):
                         'playcount': row[2] or 0,
                         'lastplayed': row[3],
                         'rating': row[4],
-                        'has_alternative': has_alternative
+                        'has_alternative': False
                     }
                     self.all_tracks.append(track_data)
                     
-                    # Afficher comme manquant
-                    match_str = "✗ Manquant"
+                    # Trouver le meilleur match dans alternativeplaycount si matcher disponible
+                    match_str = "✗ 0%"
+                    if self.matcher and alternative_tracks:
+                        best_score = 0
+                        for alt_urlmd5, alt_track in alternative_tracks.items():
+                            # Comparer artiste et titre
+                            artist_score = self._string_similarity(artist.lower(), alt_track['artist'].lower()) * 0.3
+                            title_score = self._string_similarity(title.lower(), alt_track['title'].lower()) * 0.7
+                            total_score = (artist_score + title_score) * 100
+                            
+                            if total_score > best_score:
+                                best_score = total_score
+                        
+                        if best_score > 0:
+                            match_str = f"⚠ {best_score:.0f}%" if best_score < 90 else f"✓ {best_score:.0f}%"
                     
                     tracks_to_display.append((
                         track_data['artist'],
@@ -500,6 +531,28 @@ class MainWindow(tk.Tk):
         now = datetime.now().strftime("%H:%M:%S")
         self.clock_label.config(text=now)
         self.after(1000, self._update_clock)
+    
+    def _string_similarity(self, s1: str, s2: str) -> float:
+        """
+        Calculer la similarité entre deux strings (0.0 à 1.0).
+        Utilise une simple méthode de Levenshtein ratio.
+        """
+        if not s1 or not s2:
+            return 0.0
+        
+        # Simple similarité basée sur la longueur commune
+        longer = max(len(s1), len(s2))
+        if longer == 0:
+            return 1.0
+        
+        # Compter les caractères en commun
+        common = sum(1 for a, b in zip(s1, s2) if a == b)
+        
+        # Ratio de Levenshtein simple
+        common = sum(c in s2 for c in s1)
+        max_len = max(len(s1), len(s2))
+        
+        return common / max_len if max_len > 0 else 0.0
     
     def add_track(self, artist: str, title: str, album: str, playcount: int, match_score: float) -> None:
         """Ajouter un morceau à la liste."""
