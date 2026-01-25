@@ -2,25 +2,21 @@
 
 **Objectif** : Lancer l'application en donnant **seulement** le chemin vers `persist.db`
 
+**Support** : Docker ET Mode Local (Python sans Docker)
+
 ---
 
 ## ⚡ Utilisation Rapide
 
-### Bash (Recommandé pour scripts)
+### Docker (Recommandé pour prod)
 ```bash
 bash scripts/launch.sh /path/to/lyrion/prefs
-```
-
-### Python (Recommandé pour usage interactif)
-```bash
 python3 scripts/launch.py /path/to/lyrion/prefs
 ```
 
-### Docker-compose directement
+### Local Python (Idéal pour dev)
 ```bash
-cd /path/to/project
-PROJECT_ROOT=$(pwd) LYRION_DATA_PATH=/path/to/lyrion/prefs \
-  docker-compose -f config/docker-compose.yml up -d
+python3 scripts/launch.py /path/to/lyrion/prefs --local
 ```
 
 ---
@@ -29,29 +25,45 @@ PROJECT_ROOT=$(pwd) LYRION_DATA_PATH=/path/to/lyrion/prefs \
 
 ### Synology NAS
 ```bash
+# Docker
 bash scripts/launch.sh /volume1/docker/squeezebox-lms/prefs
+
+# Ou en Python local
+python3 scripts/launch.py /volume1/docker/squeezebox-lms/prefs --local
 ```
 
 ### Linux Standalone
 ```bash
+# Docker
 bash scripts/launch.sh /var/lib/squeezeboxserver/prefs
+
+# Ou en Python local
+python3 scripts/launch.py /var/lib/squeezeboxserver/prefs --local
 ```
 
 ### macOS
 ```bash
+# Docker
 bash scripts/launch.sh ~/Library/Application\ Support/Squeezebox/prefs
+
+# Ou en Python local
+python3 scripts/launch.py ~/Library/Application\ Support/Squeezebox/prefs --local
 ```
 
 ### Windows (WSL)
 ```bash
+# Docker
 bash scripts/launch.sh /mnt/c/Users/YourName/AppData/Local/Squeezebox/prefs
+
+# Ou en Python local
+python3 scripts/launch.py /mnt/c/Users/YourName/AppData/Local/Squeezebox/prefs --local
 ```
 
 ---
 
 ## 🎮 Commandes Disponibles
 
-### Bash Script
+### Bash Script (Docker seulement)
 ```bash
 # Démarrer (par défaut)
 bash scripts/launch.sh /path/to/prefs
@@ -69,9 +81,11 @@ bash scripts/launch.sh /path/to/prefs logs
 bash scripts/launch.sh /path/to/prefs status
 ```
 
-### Python Script
+### Python Script (Docker + Local)
 ```bash
-# Démarrer (par défaut)
+# DOCKER MODE (par défaut)
+
+# Démarrer
 python3 scripts/launch.py /path/to/prefs
 
 # Arrêter
@@ -89,9 +103,38 @@ python3 scripts/launch.py /path/to/prefs --logs --follow
 # Vérifier le statut
 python3 scripts/launch.py /path/to/prefs --status
 
-# Mode verbose (pour déboguer)
-python3 scripts/launch.py /path/to/prefs --verbose
+# ─────────────────────────────────────────────────────────────
+
+# LOCAL MODE (Python, sans Docker)
+
+# Démarrer
+python3 scripts/launch.py /path/to/prefs --local
+
+# Voir les logs
+python3 scripts/launch.py /path/to/prefs --local --logs
+
+# Vérifier le statut
+python3 scripts/launch.py /path/to/prefs --local --status
+
+# Mode verbose (déboguer)
+python3 scripts/launch.py /path/to/prefs --local --verbose
 ```
+
+---
+
+## 📊 Docker vs Local
+
+| Aspect | Docker | Local |
+|--------|--------|-------|
+| **Démarrage** | ✅ `bash scripts/launch.sh` | ✅ `--local` flag |
+| **Arrêt** | ✅ `--stop` | ❌ Ctrl+C |
+| **GUI** | 🌐 VNC web + Client | 🖥️ Tkinter native |
+| **Isolation** | ✅ Complète | ❌ Système partagé |
+| **Setup** | Rapide | Très rapide |
+| **Dépendances** | Docker requis | Python requis |
+| **Performance** | Normal | Plus rapide |
+| **Développement** | Moins idéal | Parfait |
+| **Production** | Idéal | Acceptable |
 
 ---
 
@@ -102,7 +145,8 @@ python3 scripts/launch.py /path/to/prefs --verbose
 - ✅ Vérifie que `persist.db` existe
 - ✅ Crée le dossier `logs/` s'il n'existe pas
 - ✅ Copie `config.yaml.example` → `config.yaml` si manquant
-- ✅ Vérifie que `docker-compose.yml` existe
+- ✅ Vérifie que `docker-compose.yml` existe (Docker)
+- ✅ Installe les dépendances Python si manquantes (Local)
 
 ### Configuration Automatique
 - ✅ Détecte le chemin du projet automatiquement

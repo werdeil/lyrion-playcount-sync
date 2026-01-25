@@ -1,15 +1,25 @@
 #!/usr/bin/env python3
 """
-Lyrion Playcount Sync - Advanced Launcher
+Lyrion Playcount Sync - Universal Launcher
+
+Support Docker ET mode local (Python)
 
 Usage:
     python3 scripts/launch.py /path/to/lyrion/prefs [options]
 
 Examples:
+    # Mode Docker (par défaut)
     python3 scripts/launch.py /volume1/docker/squeezebox-lms/prefs
-    python3 scripts/launch.py /var/lib/squeezeboxserver/prefs --start
+    
+    # Mode local (Python, pas de Docker)
+    python3 scripts/launch.py /var/lib/squeezeboxserver/prefs --local
+    
+    # Options Docker
+    python3 scripts/launch.py /path/to/prefs --stop
     python3 scripts/launch.py /path/to/prefs --logs --follow
-    python3 scripts/launch.py /path/to/prefs --status
+    
+    # Options local
+    python3 scripts/launch.py /path/to/prefs --local --logs
 """
 
 import os
@@ -53,17 +63,18 @@ class Colors:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# LAUNCHER CLASS
+# LAUNCHER BASE CLASS
 # ═══════════════════════════════════════════════════════════════════════════
 
-class DockerLauncher:
+class LauncherBase:
+    """Base class for launchers."""
+    
     def __init__(self, lyrion_path: str, verbose: bool = False):
         """Initialize launcher with Lyrion path."""
-        self.lyrion_path = Path(lyrion_path)
+        self.lyrion_path = Path(lyrion_path).resolve()
         self.verbose = verbose
-        self.project_root = Path(__file__).parent.parent
+        self.project_root = Path(__file__).parent.parent.resolve()
         self.config_dir = self.project_root / 'config'
-        self.compose_file = self.config_dir / 'docker-compose.yml'
         
     def validate(self) -> bool:
         """Validate all prerequisites."""
@@ -78,11 +89,6 @@ class DockerLauncher:
         persist_db = self.lyrion_path / 'persist.db'
         if not persist_db.exists():
             Colors.error(f"persist.db non trouvé dans: {self.lyrion_path}")
-            return False
-        
-        # Check docker-compose file
-        if not self.compose_file.exists():
-            Colors.error(f"docker-compose.yml non trouvé: {self.compose_file}")
             return False
         
         # Create logs directory if missing
@@ -111,6 +117,38 @@ class DockerLauncher:
         print()
         Colors.info("Configuration:")
         print(f"  📂 Projet       : {self.project_root}")
+        print(f"  🎵 Lyrion DB    : {self.lyrion_path / 'persist.db'}")
+        print()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DOCKER LAUNCHER
+# ═══════════════════════════════════════════════════════════════════════════
+
+class DockerLauncher(LauncherBase):
+    """Docker-based launcher."""
+    
+    def __init__(self, lyrion_path: str, verbose: bool = False):
+        super().__init__(lyrion_path, verbose)
+        self.compose_file = self.config_dir / 'docker-compose.yml'
+        
+    def validate(self) -> bool:
+        """Validate all prerequisites."""
+        if not super().validate():
+            return False
+        
+        # Check docker-compose file
+        if not self.compose_file.exists():
+            Colors.error(f"docker-compose.yml non trouvé: {self.compose_file}")
+            return False
+        
+        return True
+    
+    def print_config(self) -> None:
+        """Print current configuration."""
+        print()
+        Colors.info("Configuration Docker:")
+        print(f"  📂 Projet       : {self.project_root}")
         print(f"  🐳 Docker       : {self.compose_file}")
         print(f"  🎵 Lyrion DB    : {self.lyrion_path / 'persist.db'}")
         print()
@@ -124,8 +162,6 @@ class DockerLauncher:
             
             if self.verbose:
                 Colors.debug(f"Exécution: {' '.join(cmd)}")
-                Colors.debug(f"PROJECT_ROOT={self.project_root}")
-                Colors.debug(f"LYRION_DATA_PATH={self.lyrion_path}")
             
             os.chdir(str(self.project_root))
             result = subprocess.run(cmd, env=env, cwd=str(self.project_root))
@@ -137,7 +173,7 @@ class DockerLauncher:
     
     def start(self) -> None:
         """Start the container."""
-        Colors.info("🚀 Démarrage du conteneur...")
+        Colors.info("🚀 Démarrage du conteneur Docker...")
         cmd = [
             'docker-compose',
             '-f', str(self.compose_file),
@@ -157,7 +193,7 @@ class DockerLauncher:
     
     def stop(self) -> None:
         """Stop the container."""
-        Colors.info("🛑 Arrêt du conteneur...")
+        Colors.info("🛑 Arrêt du conteneur Docker...")
         cmd = ['docker-compose', '-f', str(self.compose_file), 'down']
         if self.run_command(cmd):
             Colors.success("Conteneur arrêté")
@@ -167,7 +203,7 @@ class DockerLauncher:
     
     def restart(self) -> None:
         """Restart the container."""
-        Colors.info("🔄 Redémarrage du conteneur...")
+        Colors.info("🔄 Redémarrage du conteneur Docker...")
         cmd = ['docker-compose', '-f', str(self.compose_file), 'restart']
         if self.run_command(cmd):
             Colors.success("Conteneur redémarré")
@@ -177,7 +213,7 @@ class DockerLauncher:
     
     def logs(self, follow: bool = False) -> None:
         """Show container logs."""
-        Colors.info("📜 Logs du conteneur...")
+        Colors.info("📜 Logs du conteneur Docker...")
         cmd = ['docker-compose', '-f', str(self.compose_file), 'logs']
         if follow:
             cmd.append('-f')
@@ -186,9 +222,160 @@ class DockerLauncher:
     
     def status(self) -> None:
         """Show container status."""
-        Colors.info("📊 Statut du conteneur:")
+        Colors.info("📊 Statut du conteneur Docker:")
         cmd = ['docker-compose', '-f', str(self.compose_file), 'ps']
         self.run_command(cmd)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# LOCAL LAUNCHER
+# ═══════════════════════════════════════════════════════════════════════════
+
+class LocalLauncher(LauncherBase):
+    """Local Python launcher (no Docker)."""
+    
+    def validate(self) -> bool:
+        """Validate all prerequisites."""
+        if not super().validate():
+            return False
+        
+        # Check .env file
+        env_file = self.project_root / '.env'
+        if not env_file.exists():
+            Colors.warning(".env non trouvé, création...")
+            env_example = self.config_dir / '.env.example'
+            if not env_example.exists():
+                Colors.error(".env.example non trouvé")
+                return False
+            import shutil
+            shutil.copy(str(env_example), str(env_file))
+            Colors.success(f".env créé")
+        
+        # Check requirements
+        if not self.check_requirements():
+            return False
+        
+        return True
+    
+    def check_requirements(self) -> bool:
+        """Check if all Python requirements are installed."""
+        Colors.info("Vérification des dépendances Python...")
+        
+        try:
+            import ttkbootstrap
+            import rapidfuzz
+            import yaml
+            import dotenv
+            Colors.success("Toutes les dépendances sont installées")
+            return True
+        except ImportError as e:
+            Colors.warning(f"Dépendance manquante: {e}")
+            Colors.info("Installation des dépendances...")
+            
+            # Try to install
+            requirements_file = self.project_root / 'requirements.txt'
+            if requirements_file.exists():
+                result = subprocess.run(
+                    [sys.executable, '-m', 'pip', 'install', '-r', str(requirements_file)],
+                    cwd=str(self.project_root)
+                )
+                if result.returncode == 0:
+                    Colors.success("Dépendances installées")
+                    return True
+                else:
+                    Colors.error("Erreur lors de l'installation des dépendances")
+                    return False
+            else:
+                Colors.error("requirements.txt non trouvé")
+                return False
+    
+    def print_config(self) -> None:
+        """Print current configuration."""
+        print()
+        Colors.info("Configuration Local (Python):")
+        print(f"  📂 Projet       : {self.project_root}")
+        print(f"  🎵 Lyrion DB    : {self.lyrion_path / 'persist.db'}")
+        print(f"  🐍 Python       : {sys.executable}")
+        print()
+    
+    def start(self) -> None:
+        """Start the application locally."""
+        Colors.info("🚀 Lancement de l'application Python...")
+        
+        try:
+            # Set environment variables
+            os.environ['LYRION_DATA_PATH'] = str(self.lyrion_path)
+            os.environ['PROJECT_ROOT'] = str(self.project_root)
+            
+            # Change to project root
+            os.chdir(str(self.project_root))
+            
+            # Add project to path
+            sys.path.insert(0, str(self.project_root))
+            
+            if self.verbose:
+                Colors.debug(f"LYRION_DATA_PATH={self.lyrion_path}")
+                Colors.debug(f"PROJECT_ROOT={self.project_root}")
+                Colors.debug(f"Chemin Python: {sys.path[0]}")
+            
+            # Import and run application
+            from src.main import Application
+            
+            Colors.success("Application lancée")
+            print()
+            Colors.info("🎯 Interface GUI:")
+            print(f"  L'interface graphique s'ouvrira automatiquement")
+            print()
+            
+            # Launch app
+            app = Application()
+            app.run()
+            
+        except ImportError as e:
+            Colors.error(f"Erreur d'importation: {e}")
+            Colors.info("Installer les dépendances: pip install -r requirements.txt")
+            sys.exit(1)
+        except Exception as e:
+            Colors.error(f"Erreur lors du lancement: {e}")
+            if self.verbose:
+                import traceback
+                traceback.print_exc()
+            sys.exit(1)
+    
+    def logs(self, follow: bool = False) -> None:
+        """Show application logs."""
+        Colors.info("📜 Logs de l'application...")
+        logs_dir = self.project_root / 'logs'
+        if not logs_dir.exists():
+            Colors.error("Dossier logs non trouvé")
+            return
+        
+        log_files = list(logs_dir.glob('*.log'))
+        if not log_files:
+            Colors.warning("Aucun fichier log trouvé")
+            return
+        
+        # Show latest log file
+        latest_log = max(log_files, key=lambda p: p.stat().st_mtime)
+        Colors.info(f"Affichage: {latest_log.name}")
+        
+        try:
+            if follow:
+                subprocess.run(['tail', '-f', str(latest_log)])
+            else:
+                with open(latest_log, 'r') as f:
+                    print(f.read())
+        except Exception as e:
+            Colors.error(f"Erreur lors de la lecture des logs: {e}")
+    
+    def status(self) -> None:
+        """Show application status."""
+        Colors.info("📊 Statut:")
+        print(f"  📂 Projet       : {self.project_root}")
+        print(f"  🎵 Lyrion DB    : {self.lyrion_path / 'persist.db'}")
+        print(f"  📜 Logs         : {self.project_root / 'logs'}")
+        print(f"  ⚙️  Config       : {self.project_root / 'config.yaml'}")
+        print(f"  🐍 Python       : {sys.executable}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -198,15 +385,17 @@ class DockerLauncher:
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description='Lyrion Playcount Sync - Advanced Docker Launcher',
+        description='Lyrion Playcount Sync - Universal Launcher (Docker + Local)',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
+DOCKER MODE (défaut):
   python3 scripts/launch.py /volume1/docker/squeezebox-lms/prefs
-  python3 scripts/launch.py /var/lib/squeezeboxserver/prefs --start
+  python3 scripts/launch.py /path/to/prefs --stop
   python3 scripts/launch.py /path/to/prefs --logs --follow
-  python3 scripts/launch.py /path/to/prefs --status
-  python3 scripts/launch.py /path/to/prefs --verbose
+
+LOCAL MODE (Python, pas de Docker):
+  python3 scripts/launch.py /var/lib/squeezeboxserver/prefs --local
+  python3 scripts/launch.py /path/to/prefs --local --logs
         """
     )
     
@@ -215,23 +404,31 @@ Examples:
         help='Chemin vers le répertoire de données Lyrion (contenant persist.db)'
     )
     
+    # Mode
+    mode = parser.add_argument_group('Mode')
+    mode.add_argument(
+        '--local',
+        action='store_true',
+        help='Lancer en mode local (Python, pas de Docker)'
+    )
+    
     # Actions
     actions = parser.add_argument_group('Actions')
     actions.add_argument(
         '--start',
         action='store_true',
         default=True,
-        help='Démarrer le conteneur (action par défaut)'
+        help='Démarrer (action par défaut)'
     )
     actions.add_argument(
         '--stop',
         action='store_true',
-        help='Arrêter le conteneur'
+        help='Arrêter (Docker seulement)'
     )
     actions.add_argument(
         '--restart',
         action='store_true',
-        help='Redémarrer le conteneur'
+        help='Redémarrer (Docker seulement)'
     )
     actions.add_argument(
         '--logs',
@@ -260,7 +457,15 @@ Examples:
     args = parser.parse_args()
     
     # Create launcher
-    launcher = DockerLauncher(args.lyrion_path, args.verbose)
+    if args.local:
+        launcher = LocalLauncher(args.lyrion_path, args.verbose)
+        mode_name = "LOCAL (Python)"
+    else:
+        launcher = DockerLauncher(args.lyrion_path, args.verbose)
+        mode_name = "DOCKER"
+    
+    print()
+    Colors.info(f"Mode: {mode_name}")
     
     # Validate
     if not launcher.validate():
@@ -270,8 +475,14 @@ Examples:
     
     # Execute action
     if args.stop:
+        if args.local:
+            Colors.warning("Action --stop non disponible en mode local")
+            sys.exit(1)
         launcher.stop()
     elif args.restart:
+        if args.local:
+            Colors.warning("Action --restart non disponible en mode local")
+            sys.exit(1)
         launcher.restart()
     elif args.logs:
         launcher.logs(follow=args.follow)
