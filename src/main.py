@@ -189,8 +189,9 @@ class Application:
         try:
             self.logger.info("Initialisation des composants...")
             
-            # Initialiser le détecteur de synchronisation
-            self.detector = SyncDetector(self.db)
+            # SyncDetector est une classe utilitaire avec méthodes statiques
+            # Pas besoin d'instanciation, juste la garder comme référence
+            self.detector = SyncDetector
             self.logger.info("✓ Détecteur de sync initialisé")
             
             # Initialiser le matcher de pistes
@@ -213,22 +214,16 @@ class Application:
         try:
             self.logger.info("Lancement de l'interface utilisateur...")
             
-            # Créer la fenêtre principale
-            root = tk.Tk()
-            self.window = MainWindow(
-                root,
-                db=self.db,
-                detector=self.detector,
-                matcher=self.matcher,
-                config=self.config
-            )
+            # Créer la fenêtre principale (MainWindow hérite de tk.Tk)
+            db_path = str(self.config.database.path)
+            self.window = MainWindow(db_path=db_path)
             
             self.logger.info("✓ Interface chargée")
             
             # Appliquer la configuration UI
             if self.config.ui.window_size:
                 try:
-                    root.geometry(self.config.ui.window_size)
+                    self.window.geometry(self.config.ui.window_size)
                 except Exception as e:
                     self.logger.warning(f"Impossible d'appliquer la taille: {e}")
             
@@ -240,7 +235,7 @@ class Application:
                     self.logger.warning(f"Impossible d'appliquer le thème: {e}")
             
             self.logger.info("Démarrage de la boucle événementielle...")
-            root.mainloop()
+            self.window.mainloop()
             
             return True
             
