@@ -148,8 +148,10 @@ class Application:
             self.db = DatabaseManager(db_path)
             
             # Établir la connexion
-            if not self.db.connect():
-                self.logger.error("Impossible de se connecter à la base de données")
+            try:
+                self.db.connect()
+            except Exception as e:
+                self.logger.error(f"Impossible de se connecter à la base de données: {e}")
                 return False
             
             self.logger.info("✓ Connexion établie")

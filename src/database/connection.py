@@ -21,10 +21,15 @@ class DatabaseManager:
     """Gestionnaire complet de connexion SQLite pour Lyrion."""
     
     # Tables requises dans la BD Lyrion
+    # Note: Les noms de colonnes sont case-insensitive (Lyrion utilise parfois playCount vs playcount)
     REQUIRED_TABLES = {
-        'tracks_persistent': ['urlmd5', 'playcount', 'lastplayed', 'rating'],
-        'alternativeplaycount': ['urlmd5', 'playcount', 'lastplayed', 'source'],
-        'tracks': ['id', 'url', 'urlmd5', 'title', 'tracknum', 'album', 'timestamp']
+        'tracks_persistent': ['urlmd5', 'playcount'],  # Colonnes minimales requises
+        'alternativeplaycount': ['urlmd5', 'playcount'],  # Colonne minimal (lastplayed et source sont optionnels)
+    }
+    
+    # Tables optionnelles qui peuvent exister
+    OPTIONAL_TABLES = {
+        'tracks': ['url', 'urlmd5']
     }
     
     # Chemins typiques par OS
@@ -186,12 +191,12 @@ class DatabaseManager:
                         f"Table manquante : {table_name}"
                     )
                 
-                # Vérifier les colonnes
+                # Vérifier les colonnes (insensible à la casse)
                 cursor.execute(f"PRAGMA table_info({table_name})")
-                existing_columns = {row[1] for row in cursor.fetchall()}
+                existing_columns = {row[1].lower() for row in cursor.fetchall()}
                 
                 for column in required_columns:
-                    if column not in existing_columns:
+                    if column.lower() not in existing_columns:
                         raise DatabaseConnectionError(
                             f"Colonne manquante : {table_name}.{column}"
                         )
