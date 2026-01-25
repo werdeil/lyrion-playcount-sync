@@ -386,7 +386,14 @@ class MainWindow(tk.Tk):
             return
         
         try:
-            # Récupérer tous les tracks depuis tracks_persistent
+            # Afficher un message de chargement
+            self.treeview.delete(*self.treeview.get_children())
+            self.treeview.insert('', 'end', values=('Chargement...', 'Veuillez patienter', '(En cours)', '...', '...'))
+            self.update()
+            
+            # Récupérer TOUS les tracks d'abord (sans les afficher)
+            tracks_to_display = []
+            
             with self.db_manager.cursor(commit=False) as cursor:
                 cursor.execute("""
                     SELECT 
@@ -432,17 +439,28 @@ class MainWindow(tk.Tk):
                     }
                     self.all_tracks.append(track_data)
                     
-                    # Ajouter à la Treeview
+                    # Préparer l'affichage
                     match_score = 100 if track_data['has_alternative'] else 0
-                    self.add_track(
-                        artist=track_data['artist'],
-                        title=track_data['title'],
-                        album=track_data['album'],
-                        playcount=track_data['playcount'],
-                        match_score=match_score
-                    )
+                    match_str = f"✓ {match_score:.0f}%" if track_data['has_alternative'] else "✗ 0%"
+                    
+                    tracks_to_display.append((
+                        track_data['artist'],
+                        track_data['title'],
+                        track_data['album'],
+                        track_data['playcount'],
+                        match_str
+                    ))
+            
+            # Maintenant afficher tous les tracks en batch
+            self.treeview.delete(*self.treeview.get_children())
+            for i, track_values in enumerate(tracks_to_display):
+                self.treeview.insert('', 'end', values=track_values)
+                # Mettre à jour l'interface tous les 100 items
+                if (i + 1) % 100 == 0:
+                    self.update()
             
             self.filtered_tracks = self.all_tracks.copy()
+            self._update_statusbar()
             
         except Exception as e:
             messagebox.showerror("Erreur", f"Erreur lors du chargement des tracks: {e}")
