@@ -3,8 +3,8 @@ version: '3.8'
 services:
   lyrion-sync:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: config/Dockerfile
     
     container_name: lyrion-playcount-sync
     
@@ -25,14 +25,14 @@ services:
       - TZ=Europe/Paris
     
     volumes:
-      # Configuration de l'application
-      - ./config.yaml:/app/config.yaml
-      - ./logs:/app/logs
+      # Configuration de l'application (chemins absolus)
+      - ${PROJECT_ROOT:-$(pwd)/..}/config.yaml:/app/config.yaml
+      - ${PROJECT_ROOT:-$(pwd)/..}/logs:/app/logs
       
       # Base de données Lyrion (LECTURE/ÉCRITURE)
       # ⚠️ IMPORTANT: Arrêter Lyrion avant de démarrer ce service!
-      # Adapter le chemin selon votre installation Lyrion
-      - ${LYRION_DATA_PATH:-/path/to/lyrion/config}:/lyrion-data
+      # Passer LYRION_DATA_PATH=/path/to/lyrion/prefs en variable
+      - ${LYRION_DATA_PATH}:/lyrion-data
     
     ports:
       # VNC direct
