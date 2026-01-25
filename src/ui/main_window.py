@@ -383,16 +383,120 @@ class MainWindow(tk.Tk):
         messagebox.showinfo("Configuration", "Paramètres:\n- Seuil de match\n- Chemins DB\n- Préférences UI")
     
     def _on_suggestions_click(self) -> None:
-        """Appeler pour voir les suggestions de match."""
-        messagebox.showinfo("Suggestions", "Affichage des meilleures correspondances...")
+        """Afficher les meilleures suggestions de match pour le morceau sélectionné."""
+        selection = self.treeview.selection()
+        if not selection:
+            messagebox.showwarning("Erreur", "Aucun morceau sélectionné")
+            return
+        
+        # Récupérer les valeurs du morceau sélectionné
+        item = selection[0]
+        values = self.treeview.item(item, "values")
+        artist, title, album = values[0], values[1], values[2]
+        
+        # Créer une fenêtre popup pour les suggestions
+        suggestions_window = tk.Toplevel(self)
+        suggestions_window.title(f"Suggestions pour: {artist} - {title}")
+        suggestions_window.geometry("600x400")
+        
+        # Frame pour la recherche
+        search_frame = ttk.Frame(suggestions_window)
+        search_frame.pack(fill=tk.X, padx=10, pady=10)
+        
+        ttk.Label(search_frame, text=f"Morceaux similaires à: {artist} - {title}").pack()
+        
+        # Treeview pour les suggestions
+        tree = ttk.Treeview(suggestions_window, columns=('Artist', 'Title', 'Score'), height=15)
+        tree.column('#0', width=0, stretch=tk.NO)
+        tree.column('Artist', anchor=tk.W, width=150)
+        tree.column('Title', anchor=tk.W, width=300)
+        tree.column('Score', anchor=tk.CENTER, width=80)
+        
+        tree.heading('#0', text='', anchor=tk.W)
+        tree.heading('Artist', text='Artiste', anchor=tk.W)
+        tree.heading('Title', text='Titre', anchor=tk.W)
+        tree.heading('Score', text='Match', anchor=tk.CENTER)
+        
+        tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Récupérer les meilleures suggestions
+        suggestions = []
+        if self.db_manager:
+            try:
+                with self.db_manager.cursor(commit=False) as cursor:
+                    cursor.execute("SELECT urlmd5, url FROM alternativeplaycount LIMIT 50")
+                    for row in cursor.fetchall():
+                        url = row[1] or 'Unknown'
+                        parts = url.split('/')
+                        
+                        if len(parts) >= 3:
+                            alt_artist = parts[-3]
+                            alt_title = parts[-1].replace('.mp3', '').replace('.flac', '')
+                        elif len(parts) >= 2:
+                            alt_artist = parts[-2]
+                            alt_title = parts[-1].replace('.mp3', '').replace('.flac', '')
+                        else:
+                            alt_artist = 'Unknown'
+                            alt_title = url
+                        
+                        # Calculer score
+                        artist_score = self._string_similarity(artist.lower(), alt_artist.lower()) * 0.3
+                        title_score = self._string_similarity(title.lower(), alt_title.lower()) * 0.7
+                        total_score = (artist_score + title_score) * 100
+                        
+                        suggestions.append((alt_artist, alt_title, total_score))
+                
+                # Trier par score décroissant
+                suggestions.sort(key=lambda x: x[2], reverse=True)
+                
+                # Afficher les top 10
+                for i, (alt_artist, alt_title, score) in enumerate(suggestions[:10]):
+                    tag = 'good' if score >= 90 else 'warning' if score >= 60 else 'bad'
+                    tree.insert('', 'end', values=(alt_artist, alt_title, f"{score:.0f}%"), tags=(tag,))
+                
+                # Configurer les tags de couleur
+                tree.tag_configure('good', foreground='green')
+                tree.tag_configure('warning', foreground='orange')
+                tree.tag_configure('bad', foreground='red')
+            except Exception as e:
+                messagebox.showerror("Erreur", f"Erreur lors du chargement des suggestions: {e}")
     
     def _on_ignore_click(self) -> None:
-        """Ignorer un morceau."""
-        messagebox.showinfo("Ignorer", "Ce morceau a été ignoré.")
+        """Ignorer un morceau et le supprimer de la liste."""
+        selection = self.treeview.selection()
+        if not selection:
+            messagebox.showwarning("Erreur", "Aucun morceau sélectionné")
+            return
+        
+        item = selection[0]
+        self.treeview.delete(item)
+        messagebox.showinfo("Succès", "Morceau ignoré et supprimé de la liste.")
     
     def _on_mark_resolved_click(self) -> None:
-        """Marquer comme résolu."""
-        messagebox.showinfo("Résolu", "Ce morceau a été marqué comme résolu.")
+        """Marquer un morceau comme résolu (correspondance acceptée)."""
+        selection = self.treeview.selection()
+        if not selection:
+            messagebox.showwarning("Erreur", "Aucun morceau sélectionné")
+            return
+        
+        item = selection[0]
+        values = self.treeview.item(item, "values")
+        artist, title, album, playcount, match = values[0], values[1], values[2], values[3], values[4]
+        
+        # Afficher les détails du morceau résolut
+        messagebox.showinfo(
+            "Morceau résolu",
+            f"Le morceau '{artist} - {title}' a été marqué comme résolu.\n\n"
+            f"Match trouvé: {match}\n"
+            f"Playcounts seront synchronisés."
+        )
+        
+        # Marquer comme résolu en changeant la couleur
+        self.treeview.item(item, tags=('resolved',))
+        
+        # Créer la balance de résolu
+        self.treeview.tag_configure('resolved', foreground='green')
+
     
     def _update_selection_label(self) -> None:
         """Mettre à jour le label du compteur de sélection."""
