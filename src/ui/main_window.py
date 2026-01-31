@@ -417,7 +417,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
         # Créer une fenêtre de correction
         correct_window = tk.Toplevel(self)
         correct_window.title("Corriger la sélection")
-        correct_window.geometry("500x300")
+        correct_window.geometry("500x350")
         
         # Afficher les morceaux sélectionnés
         info_text = f"Vous avez sélectionné {len(selection)} morceau(x).\n\n"
@@ -430,6 +430,64 @@ Clic-droit sur le morceau pour voir les options de correspondance.
             info_text += f"... et {len(selection) - 5} autre(s)\n"
         
         ttk.Label(correct_window, text=info_text, justify=tk.LEFT).pack(padx=10, pady=10)
+        
+        # Bouton pour synchroniser avec meilleur match
+        def sync_with_best_match():
+            synced_count = 0
+            for item in selection:
+                values = self.treeview.item(item, "values")
+                if len(values) >= 6:
+                    artist = values[0]
+                    title = values[1]
+                    persist_play = values[3]
+                    
+                    # Trouver le meilleur match dans alternative_tracks
+                    best_match = None
+                    best_score = 0
+                    for alt_urlmd5, alt_track in self.alternative_tracks.items():
+                        artist_score = self._string_similarity(artist.lower(), alt_track['artist'].lower()) * 0.3
+                        title_score = self._string_similarity(title.lower(), alt_track['title'].lower()) * 0.7
+                        total_score = (artist_score + title_score) * 100
+                        
+                        if total_score > best_score:
+                            best_score = total_score
+                            best_match = alt_urlmd5
+                    
+                    # Si on a trouvé un match avec score >= 60, faire la synchro
+                    if best_match and best_score >= 60:
+                        try:
+                            alt_track = self.alternative_tracks[best_match]
+                            # Récupérer l'urlmd5 du morceau persist via all_tracks
+                            persist_urlmd5 = None
+                            for track in self.all_tracks:
+                                if track['artist'] == artist and track['title'] == title:
+                                    persist_urlmd5 = track['urlmd5']
+                                    break
+                            
+                            if persist_urlmd5:
+                                # Mettre à jour alternativeplaycount avec playcount et lastplayed de persist
+                                with self.db_manager.cursor() as cursor:
+                                    cursor.execute("""
+                                        UPDATE alternativeplaycount 
+                                        SET playCount = ?, lastPlayed = ?
+                                        WHERE urlmd5 = ?
+                                    """, (persist_play, self.all_tracks[0]['persist_lastplayed'] if self.all_tracks else None, best_match))
+                                
+                                # Supprimer de tracks_persistent
+                                with self.db_manager.cursor() as cursor:
+                                    cursor.execute("DELETE FROM tracks_persistent WHERE urlmd5 = ?", (persist_urlmd5,))
+                                
+                                # Supprimer de la vue
+                                self.treeview.delete(item)
+                                synced_count += 1
+                        except Exception as e:
+                            messagebox.showerror("Erreur sync", f"Erreur lors de la synchronisation: {e}")
+            
+            if synced_count > 0:
+                messagebox.showinfo("Succès", f"{synced_count} morceau(x) synchronisé(s) avec alternativeplaycount")
+            else:
+                messagebox.showwarning("Pas de sync", "Aucun match avec score >= 60% trouvé")
+            correct_window.destroy()
         
         # Bouton pour marquer comme résolu
         def mark_all_resolved():
@@ -448,7 +506,8 @@ Clic-droit sur le morceau pour voir les options de correspondance.
         button_frame = ttk.Frame(correct_window)
         button_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Button(button_frame, text="Marquer comme résolu", command=mark_all_resolved).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Sync auto (best match)", command=sync_with_best_match).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Marquer résolu", command=mark_all_resolved).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Ignorer", command=ignore_all).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Annuler", command=correct_window.destroy).pack(side=tk.LEFT, padx=5)
     
