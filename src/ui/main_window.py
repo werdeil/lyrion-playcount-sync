@@ -728,8 +728,10 @@ class MainWindow(tk.Tk):
                     
                     # Déterminer le statut : tous les éléments affichés sont manquants
                     match_str = "✗ 0%"
+                    best_alt_playcount = None
                     if self.matcher and self.alternative_tracks:
                         best_score = 0
+                        best_match_urlmd5 = None
                         for alt_urlmd5, alt_track in self.alternative_tracks.items():
                             # Comparer artiste et titre
                             artist_score = self._string_similarity(artist.lower(), alt_track['artist'].lower()) * 0.3
@@ -738,9 +740,13 @@ class MainWindow(tk.Tk):
                             
                             if total_score > best_score:
                                 best_score = total_score
+                                best_match_urlmd5 = alt_urlmd5
                         
                         if best_score > 0:
                             match_str = f"⚠ {best_score:.0f}%" if best_score < 90 else f"✓ {best_score:.0f}%"
+                            # Récupérer le playcount du meilleur match trouvé
+                            if best_match_urlmd5 and best_match_urlmd5 in self.alternative_tracks:
+                                best_alt_playcount = self.alternative_tracks[best_match_urlmd5].get('playCount')
 
                     tracks_to_display.append(
                         (
@@ -748,7 +754,7 @@ class MainWindow(tk.Tk):
                             track_data['title'],
                             track_data['album'],
                             str(track_data.get('persist_playcount', 0)),
-                            str(track_data.get('alt_playcount', '')),
+                            str(best_alt_playcount if best_alt_playcount is not None else ''),
                             match_str
                         )
                     )
