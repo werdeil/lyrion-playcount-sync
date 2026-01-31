@@ -430,18 +430,47 @@ class MainWindow(tk.Tk):
             messagebox.showwarning("Pas de sync", "Aucun match avec score >= 60% trouvé")
     
     def _ignore_selected_tracks(self) -> None:
-        """Ignorer les morceaux sélectionnés (les supprimer de la vue)."""
+        """Ignorer les morceaux sélectionnés (les supprimer de la table persist et de la vue)."""
         selection = self.treeview.selection()
         if not selection:
             messagebox.showwarning("Aucune sélection", "Veuillez sélectionner au moins un morceau")
             return
         
-        count = len(selection)
+        count = 0
         for item in selection:
+            values = self.treeview.item(item, "values")
+            if len(values) >= 2:
+                artist = values[0]
+                title = values[1]
+                
+                # Trouver l'urlmd5 du morceau dans all_tracks
+                persist_urlmd5 = None
+                for track in self.all_tracks:
+                    if isinstance(track, dict) and track.get('artist') == artist and track.get('title') == title:
+                        persist_urlmd5 = track['urlmd5']
+                        break
+                
+                if persist_urlmd5:
+                    try:
+                        # Supprimer de la table tracks_persistent
+                        print(f"[INFO] Suppression ignorée de persist: {persist_urlmd5}")
+                        with self.db_manager.cursor() as cursor:
+                            cursor.execute("DELETE FROM tracks_persistent WHERE urlmd5 = ?", (persist_urlmd5,))
+                        print(f"[INFO] ✓ {artist} - {title} supprimé de persist")
+                        count += 1
+                    except Exception as e:
+                        print(f"[ERROR] Exception: {e}")
+                        messagebox.showerror("Erreur", f"Erreur lors de la suppression: {e}")
+                        continue
+            
+            # Supprimer de la vue
             self.treeview.delete(item)
         
-        messagebox.showinfo("Succès", f"{count} morceau(x) ignoré(s)")
-        print(f"[INFO] {count} morceau(x) ignoré(s) de la vue")
+        if count > 0:
+            messagebox.showinfo("Succès", f"{count} morceau(x) ignoré(s) et supprimé(s) de persist")
+            print(f"[INFO] Total ignoré: {count} morceau(x)")
+        else:
+            messagebox.showwarning("Erreur", "Aucun morceau n'a pu être supprimé")
     
     def _on_config_click(self) -> None:
         """Ouvrir la fenêtre de configuration."""
