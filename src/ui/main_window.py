@@ -454,6 +454,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                     artist = values[0]
                     title = values[1]
                     persist_play = values[3]
+                    print(f"[INFO] Traitement: {artist} - {title} (playcount={persist_play})")
                     
                     # Trouver le meilleur match dans alternative_tracks
                     best_match = None
@@ -467,6 +468,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                             best_score = total_score
                             best_match = alt_urlmd5
                     
+                    print(f"[INFO] Meilleur match trouvé: score={best_score:.0f}%")
                     # Si on a trouvé un match avec score >= 60, faire la synchro
                     if best_match and best_score >= 60:
                         try:
@@ -481,28 +483,40 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                                     persist_lastplayed = track['persist_lastplayed']
                                     break
                             
+                            print(f"[INFO] Track persist trouvé: urlmd5={persist_urlmd5}")
                             if persist_urlmd5:
                                 # Mettre à jour alternativeplaycount avec playcount et lastplayed de persist
+                                print(f"[INFO] Mise à jour alternativeplaycount: playCount={persist_play}, lastPlayed={persist_lastplayed}")
                                 with self.db_manager.cursor() as cursor:
                                     cursor.execute("""
                                         UPDATE alternativeplaycount 
                                         SET playCount = ?, lastPlayed = ?
                                         WHERE urlmd5 = ?
                                     """, (persist_play, persist_lastplayed, best_match))
+                                print(f"[INFO] ✓ alternativeplaycount mis à jour")
                                 
                                 # Supprimer de tracks_persistent
+                                print(f"[INFO] Suppression de tracks_persistent: {persist_urlmd5}")
                                 with self.db_manager.cursor() as cursor:
                                     cursor.execute("DELETE FROM tracks_persistent WHERE urlmd5 = ?", (persist_urlmd5,))
+                                print(f"[INFO] ✓ tracks_persistent supprimé")
                                 
                                 # Supprimer de la vue
                                 self.treeview.delete(item)
                                 synced_count += 1
+                                print(f"[INFO] ✓ Synchronisation complétée pour: {artist} - {title}")
                         except Exception as e:
+                            print(f"[ERROR] Exception: {e}")
                             messagebox.showerror("Erreur sync", f"Erreur lors de la synchronisation: {e}")
-                            messagebox.showerror("Erreur sync", f"Erreur lors de la synchronisation: {e}")
+                    else:
+                        if best_match:
+                            print(f"[INFO] Score insuffisant ({best_score:.0f}% < 60%) pour sync")
+                        else:
+                            print(f"[INFO] Aucun match trouvé pour ce morceau")
             
             if synced_count > 0:
                 messagebox.showinfo("Succès", f"{synced_count} morceau(x) synchronisé(s) avec alternativeplaycount")
+                print(f"[INFO] Total synchronisé: {synced_count} morceau(x)")
             else:
                 messagebox.showwarning("Pas de sync", "Aucun match avec score >= 60% trouvé")
             correct_window.destroy()
