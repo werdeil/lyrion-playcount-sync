@@ -180,7 +180,7 @@ class MainWindow(tk.Tk):
         )
         treeview_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        columns = ("Artiste", "Titre", "Album", "Plays (persist)", "Plays (alt)", "Match?")
+        columns = ("Artiste", "Titre", "Album", "Plays (persist)", "Plays (alt)", "Dernier (persist)", "Dernier (alt)", "Match?")
         self.treeview = ttk.Treeview(
             treeview_frame,
             columns=columns,
@@ -191,7 +191,7 @@ class MainWindow(tk.Tk):
         self.treeview.heading("#0", text="")
         self.treeview.column("#0", width=0, stretch=tk.NO)
         
-        widths = [120, 200, 150, 80, 80, 80]
+        widths = [120, 200, 150, 80, 80, 100, 100, 80]
         for col, width in zip(columns, widths):
             self.treeview.heading(col, text=col)
             self.treeview.column(col, width=width, anchor=tk.W)
@@ -217,12 +217,12 @@ class MainWindow(tk.Tk):
     def _populate_treeview_example(self) -> None:
         """Remplir la Treeview avec des données d'exemple."""
         example_data = [
-            ("Queen", "Bohemian Rhapsody", "A Night at the Opera", "42", "✓ 95%"),
-            ("The Beatles", "Hey Jude", "Past Masters", "38", "⚠ 68%"),
-            ("Pink Floyd", "Comfortably Numb", "The Wall", "55", "✗ 45%"),
-            ("Led Zeppelin", "Stairway to Heaven", "Led Zeppelin IV", "71", "✓ 92%"),
-            ("David Bowie", "Space Oddity", "Space Oddity", "28", "⚠ 75%"),
-            ("The Rolling Stones", "Sympathy for the Devil", "Beggars Banquet", "33", "✗ 38%"),
+            ("Queen", "Bohemian Rhapsody", "A Night at the Opera", "42", "", "2024-01-15", "", "✓ 95%"),
+            ("The Beatles", "Hey Jude", "Past Masters", "38", "", "2023-12-20", "", "⚠ 68%"),
+            ("Pink Floyd", "Comfortably Numb", "The Wall", "55", "", "2024-02-01", "", "✗ 45%"),
+            ("Led Zeppelin", "Stairway to Heaven", "Led Zeppelin IV", "71", "", "2024-01-30", "", "✓ 92%"),
+            ("David Bowie", "Space Oddity", "Space Oddity", "28", "", "2023-11-10", "", "⚠ 75%"),
+            ("The Rolling Stones", "Sympathy for the Devil", "Beggars Banquet", "33", "", "2024-01-05", "", "✗ 38%"),
         ]
         
         for data in example_data:
@@ -729,6 +729,7 @@ class MainWindow(tk.Tk):
                     # Déterminer le statut : tous les éléments affichés sont manquants
                     match_str = "✗ 0%"
                     best_alt_playcount = None
+                    best_alt_lastplayed = None
                     if self.matcher and self.alternative_tracks:
                         best_score = 0
                         best_match_urlmd5 = None
@@ -744,10 +745,15 @@ class MainWindow(tk.Tk):
                         
                         if best_score > 0:
                             match_str = f"⚠ {best_score:.0f}%" if best_score < 90 else f"✓ {best_score:.0f}%"
-                            # Récupérer le playcount du meilleur match trouvé
+                            # Récupérer le playcount et lastplayed du meilleur match trouvé
                             if best_match_urlmd5 and best_match_urlmd5 in self.alternative_tracks:
                                 best_alt_playcount = self.alternative_tracks[best_match_urlmd5].get('playCount')
+                                best_alt_lastplayed = self.alternative_tracks[best_match_urlmd5].get('lastPlayed')
 
+                    # Formater les dates lastPlayed
+                    persist_lastplayed_str = self._format_timestamp(persist_lastplayed) if persist_lastplayed else ''
+                    alt_lastplayed_str = self._format_timestamp(best_alt_lastplayed) if best_alt_lastplayed else ''
+                    
                     tracks_to_display.append(
                         (
                             track_data['artist'],
@@ -755,6 +761,8 @@ class MainWindow(tk.Tk):
                             track_data['album'],
                             str(track_data.get('persist_playcount', 0)),
                             str(best_alt_playcount if best_alt_playcount is not None else ''),
+                            persist_lastplayed_str,
+                            alt_lastplayed_str,
                             match_str
                         )
                     )
@@ -781,6 +789,15 @@ class MainWindow(tk.Tk):
         now = datetime.now().strftime("%H:%M:%S")
         self.clock_label.config(text=now)
         self.after(1000, self._update_clock)
+    
+    def _format_timestamp(self, timestamp) -> str:
+        """Formater un timestamp Unix en date lisible (YYYY-MM-DD)."""
+        if timestamp is None:
+            return ''
+        try:
+            return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
+        except (ValueError, OSError, TypeError):
+            return ''
     
     def _string_similarity(self, s1: str, s2: str) -> float:
         """
