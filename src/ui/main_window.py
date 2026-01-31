@@ -457,11 +457,13 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                     if best_match and best_score >= 60:
                         try:
                             alt_track = self.alternative_tracks[best_match]
-                            # Récupérer l'urlmd5 du morceau persist via all_tracks
+                            # Récupérer l'urlmd5 et persist_lastplayed du morceau persist via all_tracks
                             persist_urlmd5 = None
+                            persist_lastplayed = None
                             for track in self.all_tracks:
                                 if track['artist'] == artist and track['title'] == title:
                                     persist_urlmd5 = track['urlmd5']
+                                    persist_lastplayed = track['persist_lastplayed']
                                     break
                             
                             if persist_urlmd5:
@@ -471,7 +473,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                                         UPDATE alternativeplaycount 
                                         SET playCount = ?, lastPlayed = ?
                                         WHERE urlmd5 = ?
-                                    """, (persist_play, self.all_tracks[0]['persist_lastplayed'] if self.all_tracks else None, best_match))
+                                    """, (persist_play, persist_lastplayed, best_match))
                                 
                                 # Supprimer de tracks_persistent
                                 with self.db_manager.cursor() as cursor:
