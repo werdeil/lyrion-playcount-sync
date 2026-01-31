@@ -279,7 +279,8 @@ class MainWindow(tk.Tk):
         actions_frame = ttk.Frame(parent)
         actions_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Button(actions_frame, text="✏️ Corriger sélection", command=self._on_correct_click).pack(side=tk.LEFT, padx=2)
+        ttk.Button(actions_frame, text="⚡ Sync auto", command=self._sync_selected_tracks).pack(side=tk.LEFT, padx=2)
+        ttk.Button(actions_frame, text="🚫 Ignorer", command=self._ignore_selected_tracks).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions_frame, text="⚙️ Config", command=self._on_config_click).pack(side=tk.LEFT, padx=2)
     
     def _decode_url_parts(self, url: str) -> list:
@@ -348,127 +349,99 @@ class MainWindow(tk.Tk):
                 self.selected_tracks.add(item)
             self._update_selection_label()
     
-    def _on_correct_click(self) -> None:
-        """Ouvrir le dialogue de correction pour les morceaux sélectionnés."""
+    def _sync_selected_tracks(self) -> None:
+        """Synchroniser les morceaux sélectionnés avec le meilleur match."""
         selection = self.treeview.selection()
         if not selection:
             messagebox.showwarning("Aucune sélection", "Veuillez sélectionner au moins un morceau")
             return
         
-        # Créer une fenêtre de correction
-        correct_window = tk.Toplevel(self)
-        correct_window.title("Corriger la sélection")
-        correct_window.geometry("500x350")
-        
-        # Afficher les morceaux sélectionnés
-        info_text = f"Vous avez sélectionné {len(selection)} morceau(x).\n\n"
-        for item in list(selection)[:5]:  # Afficher les 5 premiers
+        synced_count = 0
+        for item in selection:
             values = self.treeview.item(item, "values")
-            if len(values) >= 2:
-                info_text += f"- {values[0]} - {values[1]}\n"
-        
-        if len(selection) > 5:
-            info_text += f"... et {len(selection) - 5} autre(s)\n"
-        
-        ttk.Label(correct_window, text=info_text, justify=tk.LEFT).pack(padx=10, pady=10)
-        
-        # Bouton pour synchroniser avec meilleur match
-        def sync_with_best_match():
-            synced_count = 0
-            for item in selection:
-                values = self.treeview.item(item, "values")
-                if len(values) >= 6:
-                    artist = values[0]
-                    title = values[1]
-                    persist_play = values[3]
-                    print(f"[INFO] Traitement: {artist} - {title} (playcount={persist_play})")
+            if len(values) >= 6:
+                artist = values[0]
+                title = values[1]
+                persist_play = values[3]
+                print(f"[INFO] Traitement: {artist} - {title} (playcount={persist_play})")
+                
+                # Trouver le meilleur match dans alternative_tracks
+                best_match = None
+                best_score = 0
+                for alt_urlmd5, alt_track in self.alternative_tracks.items():
+                    artist_score = self._string_similarity(artist.lower(), alt_track['artist'].lower()) * 0.3
+                    title_score = self._string_similarity(title.lower(), alt_track['title'].lower()) * 0.7
+                    total_score = (artist_score + title_score) * 100
                     
-                    # Trouver le meilleur match dans alternative_tracks
-                    best_match = None
-                    best_score = 0
-                    for alt_urlmd5, alt_track in self.alternative_tracks.items():
-                        artist_score = self._string_similarity(artist.lower(), alt_track['artist'].lower()) * 0.3
-                        title_score = self._string_similarity(title.lower(), alt_track['title'].lower()) * 0.7
-                        total_score = (artist_score + title_score) * 100
+                    if total_score > best_score:
+                        best_score = total_score
+                        best_match = alt_urlmd5
+                
+                print(f"[INFO] Meilleur match trouvé: score={best_score:.0f}%")
+                # Si on a trouvé un match avec score >= 60, faire la synchro
+                if best_match and best_score >= 60:
+                    try:
+                        alt_track = self.alternative_tracks[best_match]
+                        # Récupérer l'urlmd5 et persist_lastplayed du morceau persist via all_tracks
+                        persist_urlmd5 = None
+                        persist_lastplayed = None
                         
-                        if total_score > best_score:
-                            best_score = total_score
-                            best_match = alt_urlmd5
-                    
-                    print(f"[INFO] Meilleur match trouvé: score={best_score:.0f}%")
-                    # Si on a trouvé un match avec score >= 60, faire la synchro
-                    if best_match and best_score >= 60:
-                        try:
-                            alt_track = self.alternative_tracks[best_match]
-                            # Récupérer l'urlmd5 et persist_lastplayed du morceau persist via all_tracks
-                            persist_urlmd5 = None
-                            persist_lastplayed = None
+                        for track in self.all_tracks:
+                            if isinstance(track, dict) and track.get('artist') == artist and track.get('title') == title:
+                                persist_urlmd5 = track['urlmd5']
+                                persist_lastplayed = track['persist_lastplayed']
+                                break
+                        
+                        print(f"[INFO] Track persist trouvé: urlmd5={persist_urlmd5}")
+                        if persist_urlmd5:
+                            # Mettre à jour alternativeplaycount avec playcount et lastplayed de persist
+                            print(f"[INFO] Mise à jour alternativeplaycount: playCount={persist_play}, lastPlayed={persist_lastplayed}")
+                            with self.db_manager.cursor() as cursor:
+                                cursor.execute("""
+                                    UPDATE alternativeplaycount 
+                                    SET playCount = ?, lastPlayed = ?
+                                    WHERE urlmd5 = ?
+                                """, (persist_play, persist_lastplayed, best_match))
+                            print(f"[INFO] ✓ alternativeplaycount mis à jour")
                             
-                            for track in self.all_tracks:
-                                if isinstance(track, dict) and track.get('artist') == artist and track.get('title') == title:
-                                    persist_urlmd5 = track['urlmd5']
-                                    persist_lastplayed = track['persist_lastplayed']
-                                    break
+                            # Supprimer de tracks_persistent
+                            print(f"[INFO] Suppression de tracks_persistent: {persist_urlmd5}")
+                            with self.db_manager.cursor() as cursor:
+                                cursor.execute("DELETE FROM tracks_persistent WHERE urlmd5 = ?", (persist_urlmd5,))
+                            print(f"[INFO] ✓ tracks_persistent supprimé")
                             
-                            print(f"[INFO] Track persist trouvé: urlmd5={persist_urlmd5}")
-                            if persist_urlmd5:
-                                # Mettre à jour alternativeplaycount avec playcount et lastplayed de persist
-                                print(f"[INFO] Mise à jour alternativeplaycount: playCount={persist_play}, lastPlayed={persist_lastplayed}")
-                                with self.db_manager.cursor() as cursor:
-                                    cursor.execute("""
-                                        UPDATE alternativeplaycount 
-                                        SET playCount = ?, lastPlayed = ?
-                                        WHERE urlmd5 = ?
-                                    """, (persist_play, persist_lastplayed, best_match))
-                                print(f"[INFO] ✓ alternativeplaycount mis à jour")
-                                
-                                # Supprimer de tracks_persistent
-                                print(f"[INFO] Suppression de tracks_persistent: {persist_urlmd5}")
-                                with self.db_manager.cursor() as cursor:
-                                    cursor.execute("DELETE FROM tracks_persistent WHERE urlmd5 = ?", (persist_urlmd5,))
-                                print(f"[INFO] ✓ tracks_persistent supprimé")
-                                
-                                # Supprimer de la vue
-                                self.treeview.delete(item)
-                                synced_count += 1
-                                print(f"[INFO] ✓ Synchronisation complétée pour: {artist} - {title}")
-                        except Exception as e:
-                            print(f"[ERROR] Exception: {e}")
-                            messagebox.showerror("Erreur sync", f"Erreur lors de la synchronisation: {e}")
+                            # Supprimer de la vue
+                            self.treeview.delete(item)
+                            synced_count += 1
+                            print(f"[INFO] ✓ Synchronisation complétée pour: {artist} - {title}")
+                    except Exception as e:
+                        print(f"[ERROR] Exception: {e}")
+                        messagebox.showerror("Erreur sync", f"Erreur lors de la synchronisation: {e}")
+                else:
+                    if best_match:
+                        print(f"[INFO] Score insuffisant ({best_score:.0f}% < 60%) pour sync")
                     else:
-                        if best_match:
-                            print(f"[INFO] Score insuffisant ({best_score:.0f}% < 60%) pour sync")
-                        else:
-                            print(f"[INFO] Aucun match trouvé pour ce morceau")
-            
-            if synced_count > 0:
-                messagebox.showinfo("Succès", f"{synced_count} morceau(x) synchronisé(s) avec alternativeplaycount")
-                print(f"[INFO] Total synchronisé: {synced_count} morceau(x)")
-            else:
-                messagebox.showwarning("Pas de sync", "Aucun match avec score >= 60% trouvé")
-            correct_window.destroy()
+                        print(f"[INFO] Aucun match trouvé pour ce morceau")
         
-        # Bouton pour marquer comme résolu
-        def mark_all_resolved():
-            for item in selection:
-                self.treeview.item(item, tags=('resolved',))
-            messagebox.showinfo("Succès", f"{len(selection)} morceau(x) marqué(s) comme résolus")
-            correct_window.destroy()
+        if synced_count > 0:
+            messagebox.showinfo("Succès", f"{synced_count} morceau(x) synchronisé(s) avec alternativeplaycount")
+            print(f"[INFO] Total synchronisé: {synced_count} morceau(x)")
+        else:
+            messagebox.showwarning("Pas de sync", "Aucun match avec score >= 60% trouvé")
+    
+    def _ignore_selected_tracks(self) -> None:
+        """Ignorer les morceaux sélectionnés (les supprimer de la vue)."""
+        selection = self.treeview.selection()
+        if not selection:
+            messagebox.showwarning("Aucune sélection", "Veuillez sélectionner au moins un morceau")
+            return
         
-        # Bouton pour ignorer
-        def ignore_all():
-            for item in selection:
-                self.treeview.delete(item)
-            messagebox.showinfo("Succès", f"{len(selection)} morceau(x) ignoré(s)")
-            correct_window.destroy()
+        count = len(selection)
+        for item in selection:
+            self.treeview.delete(item)
         
-        button_frame = ttk.Frame(correct_window)
-        button_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Button(button_frame, text="Sync auto (best match)", command=sync_with_best_match).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Marquer résolu", command=mark_all_resolved).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Ignorer", command=ignore_all).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Annuler", command=correct_window.destroy).pack(side=tk.LEFT, padx=5)
+        messagebox.showinfo("Succès", f"{count} morceau(x) ignoré(s)")
+        print(f"[INFO] {count} morceau(x) ignoré(s) de la vue")
     
     def _on_config_click(self) -> None:
         """Ouvrir la fenêtre de configuration."""
