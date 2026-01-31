@@ -848,10 +848,25 @@ Clic-droit sur le morceau pour voir les options de correspondance.
         else:
             match_str = f"✗ {match_score:.0f}%"
         
-        track_data = (artist, title, album, str(playcount), "", match_str)
+        # Créer tuple pour la treeview
+        track_tuple = (artist, title, album, str(playcount), "", match_str)
         tags = self._get_match_tags(match_str)
         
-        self.treeview.insert("", tk.END, values=track_data, tags=tags)
+        self.treeview.insert("", tk.END, values=track_tuple, tags=tags)
+        
+        # Créer dict pour all_tracks (compatible avec sync_with_best_match)
+        track_data = {
+            'urlmd5': None,
+            'title': title,
+            'artist': artist,
+            'album': album,
+            'url': '',
+            'persist_playcount': playcount,
+            'persist_lastplayed': None,
+            'rating': None,
+            'alt_playcount': None,
+            'alt_lastplayed': None
+        }
         self.all_tracks.append(track_data)
     
     def clear_tracks(self) -> None:
