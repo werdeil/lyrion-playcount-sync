@@ -436,10 +436,12 @@ Clic-droit sur le morceau pour voir les options de correspondance.
             synced_count = 0
             for item in selection:
                 values = self.treeview.item(item, "values")
+                print(f"[DEBUG] values type: {type(values)}, content: {values}")
                 if len(values) >= 6:
                     artist = values[0]
                     title = values[1]
                     persist_play = values[3]
+                    print(f"[DEBUG] Processing: {artist} - {title}, persist_play={persist_play}")
                     
                     # Trouver le meilleur match dans alternative_tracks
                     best_match = None
@@ -453,6 +455,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                             best_score = total_score
                             best_match = alt_urlmd5
                     
+                    print(f"[DEBUG] Best match: {best_match}, score: {best_score}")
                     # Si on a trouvé un match avec score >= 60, faire la synchro
                     if best_match and best_score >= 60:
                         try:
@@ -460,12 +463,26 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                             # Récupérer l'urlmd5 et persist_lastplayed du morceau persist via all_tracks
                             persist_urlmd5 = None
                             persist_lastplayed = None
-                            for track in self.all_tracks:
-                                if track['artist'] == artist and track['title'] == title:
-                                    persist_urlmd5 = track['urlmd5']
-                                    persist_lastplayed = track['persist_lastplayed']
+                            
+                            print(f"[DEBUG] all_tracks length: {len(self.all_tracks)}")
+                            print(f"[DEBUG] all_tracks[0] type: {type(self.all_tracks[0]) if self.all_tracks else 'empty'}")
+                            if self.all_tracks:
+                                print(f"[DEBUG] all_tracks[0] content: {self.all_tracks[0]}")
+                            
+                            for i, track in enumerate(self.all_tracks):
+                                track_type = type(track)
+                                print(f"[DEBUG] track[{i}] type: {track_type}")
+                                if isinstance(track, dict):
+                                    if track.get('artist') == artist and track.get('title') == title:
+                                        persist_urlmd5 = track['urlmd5']
+                                        persist_lastplayed = track['persist_lastplayed']
+                                        print(f"[DEBUG] Found track: urlmd5={persist_urlmd5}, lastplayed={persist_lastplayed}")
+                                        break
+                                else:
+                                    print(f"[DEBUG] Track is not a dict: {track}")
                                     break
                             
+                            print(f"[DEBUG] persist_urlmd5: {persist_urlmd5}, persist_lastplayed: {persist_lastplayed}")
                             if persist_urlmd5:
                                 # Mettre à jour alternativeplaycount avec playcount et lastplayed de persist
                                 with self.db_manager.cursor() as cursor:
@@ -474,15 +491,20 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                                         SET playCount = ?, lastPlayed = ?
                                         WHERE urlmd5 = ?
                                     """, (persist_play, persist_lastplayed, best_match))
+                                print(f"[DEBUG] Updated alternativeplaycount for {best_match}")
                                 
                                 # Supprimer de tracks_persistent
                                 with self.db_manager.cursor() as cursor:
                                     cursor.execute("DELETE FROM tracks_persistent WHERE urlmd5 = ?", (persist_urlmd5,))
+                                print(f"[DEBUG] Deleted from tracks_persistent: {persist_urlmd5}")
                                 
                                 # Supprimer de la vue
                                 self.treeview.delete(item)
                                 synced_count += 1
                         except Exception as e:
+                            print(f"[ERROR] Exception details: {type(e).__name__}: {e}")
+                            import traceback
+                            traceback.print_exc()
                             messagebox.showerror("Erreur sync", f"Erreur lors de la synchronisation: {e}")
             
             if synced_count > 0:
