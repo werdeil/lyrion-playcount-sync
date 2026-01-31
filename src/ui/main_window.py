@@ -279,7 +279,6 @@ class MainWindow(tk.Tk):
         actions_frame = ttk.Frame(parent)
         actions_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Button(actions_frame, text="🔍 Voir détails", command=self._on_details_click).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions_frame, text="✏️ Corriger sélection", command=self._on_correct_click).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions_frame, text="⚙️ Config", command=self._on_config_click).pack(side=tk.LEFT, padx=2)
     
@@ -348,40 +347,6 @@ class MainWindow(tk.Tk):
             else:
                 self.selected_tracks.add(item)
             self._update_selection_label()
-    
-    def _on_details_click(self) -> None:
-        """Afficher les détails du morceau sélectionné."""
-        selection = self.treeview.selection()
-        if not selection:
-            messagebox.showwarning("Aucune sélection", "Veuillez sélectionner un morceau")
-            return
-        
-        # Récupérer les données du morceau sélectionné
-        item = selection[0]
-        values = self.treeview.item(item, "values")
-        
-        if len(values) >= 6:
-            artist = values[0]
-            title = values[1]
-            album = values[2]
-            persist_play = values[3]
-            alt_play = values[4]
-            match = values[5]
-            details = f"""
-Détails du morceau:
-
-Artiste: {artist}
-Titre: {title}
-Album: {album}
-Playcount (persist): {persist_play}
-Playcount (alt): {alt_play}
-Correspondance: {match}
-
-Clic-droit sur le morceau pour voir les options de correspondance.
-            """
-            messagebox.showinfo("Détails du morceau", details.strip())
-        else:
-            messagebox.showwarning("Erreur", "Impossible de récupérer les détails du morceau")
     
     def _on_correct_click(self) -> None:
         """Ouvrir le dialogue de correction pour les morceaux sélectionnés."""
