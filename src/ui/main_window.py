@@ -673,6 +673,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                         ap.url AS alt_url
                     FROM tracks_persistent tp
                     LEFT JOIN alternativeplaycount ap ON tp.urlmd5 = ap.urlmd5
+                    WHERE ap.urlmd5 IS NULL
                     ORDER BY tp.url
                 """)
 
@@ -714,30 +715,21 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                     }
                     self.all_tracks.append(track_data)
                     
-                    # Déterminer le statut : manquant (alt_playcount NULL) ou désynchronisé
+                    # Déterminer le statut : tous les éléments affichés sont manquants
                     match_str = "✗ 0%"
-                    if alt_playcount is None:
-                        # Morceau manquant dans alternativeplaycount - chercher un match
-                        if self.matcher and alternative_tracks:
-                            best_score = 0
-                            for alt_urlmd5, alt_track in alternative_tracks.items():
-                                # Comparer artiste et titre
-                                artist_score = self._string_similarity(artist.lower(), alt_track['artist'].lower()) * 0.3
-                                title_score = self._string_similarity(title.lower(), alt_track['title'].lower()) * 0.7
-                                total_score = (artist_score + title_score) * 100
-                                
-                                if total_score > best_score:
-                                    best_score = total_score
+                    if self.matcher and alternative_tracks:
+                        best_score = 0
+                        for alt_urlmd5, alt_track in alternative_tracks.items():
+                            # Comparer artiste et titre
+                            artist_score = self._string_similarity(artist.lower(), alt_track['artist'].lower()) * 0.3
+                            title_score = self._string_similarity(title.lower(), alt_track['title'].lower()) * 0.7
+                            total_score = (artist_score + title_score) * 100
                             
-                            if best_score > 0:
-                                match_str = f"⚠ {best_score:.0f}%" if best_score < 90 else f"✓ {best_score:.0f}%"
-                    else:
-                        # Morceau existe dans les deux - calculer différence
-                        if persist_playcount != alt_playcount:
-                            diff = abs(persist_playcount - alt_playcount)
-                            match_str = f"⚠ Δ{diff}"
-                        else:
-                            match_str = f"✓ OK"
+                            if total_score > best_score:
+                                best_score = total_score
+                        
+                        if best_score > 0:
+                            match_str = f"⚠ {best_score:.0f}%" if best_score < 90 else f"✓ {best_score:.0f}%"
 
                     tracks_to_display.append(
                         (
