@@ -53,6 +53,7 @@ class MainWindow(tk.Tk):
         self.selected_tracks = set()
         self.all_tracks = []
         self.filtered_tracks = []
+        self.alternative_tracks = {}  # Tous les tracks de alternativeplaycount
         
         # Configuration de la fenêtre
         self.title(self.TITLE)
@@ -527,34 +528,24 @@ Clic-droit sur le morceau pour voir les options de correspondance.
         suggestions = []
         if self.db_manager:
             try:
-                with self.db_manager.cursor(commit=False) as cursor:
-                    cursor.execute("SELECT urlmd5, url FROM alternativeplaycount LIMIT 50")
-                    for row in cursor.fetchall():
-                        url = row[1] or 'Unknown'
-                        parts = self._decode_url_parts(url)
-                        
-                        if len(parts) >= 3:
-                            alt_artist = parts[-3]
-                            alt_title = parts[-1].replace('.mp3', '').replace('.flac', '')
-                        elif len(parts) >= 2:
-                            alt_artist = parts[-2]
-                            alt_title = parts[-1].replace('.mp3', '').replace('.flac', '')
-                        else:
-                            alt_artist = 'Unknown'
-                            alt_title = url
-                        
-                        # Calculer score
-                        artist_score = self._string_similarity(artist.lower(), alt_artist.lower()) * 0.3
-                        title_score = self._string_similarity(title.lower(), alt_title.lower()) * 0.7
-                        total_score = (artist_score + title_score) * 100
-                        
-                        suggestions.append((alt_artist, alt_title, total_score))
+                # Utiliser les tracks alternatifs déjà chargés en mémoire
+                # (ils contiennent tous les 23k+ tracks)
+                for alt_urlmd5, alt_track in self.alternative_tracks.items():
+                    alt_artist = alt_track['artist']
+                    alt_title = alt_track['title']
+                    
+                    # Calculer score
+                    artist_score = self._string_similarity(artist.lower(), alt_artist.lower()) * 0.3
+                    title_score = self._string_similarity(title.lower(), alt_title.lower()) * 0.7
+                    total_score = (artist_score + title_score) * 100
+                    
+                    suggestions.append((alt_artist, alt_title, total_score))
                 
                 # Trier par score décroissant
                 suggestions.sort(key=lambda x: x[2], reverse=True)
                 
-                # Afficher les top 10
-                for i, (alt_artist, alt_title, score) in enumerate(suggestions[:10]):
+                # Afficher les top 20
+                for i, (alt_artist, alt_title, score) in enumerate(suggestions[:20]):
                     tag = 'good' if score >= 90 else 'warning' if score >= 60 else 'bad'
                     tree.insert('', 'end', values=(alt_artist, alt_title, f"{score:.0f}%"), tags=(tag,))
                 
@@ -634,7 +625,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
             self.update()
             
             # Récupérer d'abord TOUS les morceaux de alternativeplaycount pour le matching
-            alternative_tracks = {}
+            self.alternative_tracks = {}
             with self.db_manager.cursor(commit=False) as cursor:
                 cursor.execute("SELECT urlmd5, url, playCount, lastPlayed FROM alternativeplaycount")
                 for row in cursor.fetchall():
@@ -650,7 +641,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                     else:
                         artist = 'Unknown'
                         title = url
-                    alternative_tracks[row[0]] = {
+                    self.alternative_tracks[row[0]] = {
                         'artist': artist,
                         'title': title,
                         'url': url,
@@ -717,9 +708,9 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                     
                     # Déterminer le statut : tous les éléments affichés sont manquants
                     match_str = "✗ 0%"
-                    if self.matcher and alternative_tracks:
+                    if self.matcher and self.alternative_tracks:
                         best_score = 0
-                        for alt_urlmd5, alt_track in alternative_tracks.items():
+                        for alt_urlmd5, alt_track in self.alternative_tracks.items():
                             # Comparer artiste et titre
                             artist_score = self._string_similarity(artist.lower(), alt_track['artist'].lower()) * 0.3
                             title_score = self._string_similarity(title.lower(), alt_track['title'].lower()) * 0.7
