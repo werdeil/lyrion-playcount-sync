@@ -118,7 +118,6 @@ class MainWindow(tk.Tk):
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         self._create_stats_section(main_frame)
-        self._create_search_section(main_frame)
         self._create_treeview_section(main_frame)
         self._create_selection_info_section(main_frame)
         self._create_actions_section(main_frame)
@@ -171,23 +170,6 @@ class MainWindow(tk.Tk):
         
         value_label = ttk.Label(card_frame, text=value, style="StatsNumber.TLabel")
         value_label.pack(pady=(0, 5))
-    
-    def _create_search_section(self, parent: ttk.Frame) -> None:
-        """Créer la barre de recherche et le bouton Scanner."""
-        search_frame = ttk.Frame(parent)
-        search_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        search_label = ttk.Label(search_frame, text="🔍 Recherche :")
-        search_label.pack(side=tk.LEFT, padx=(0, 5))
-        
-        self.search_var = tk.StringVar()
-        self.search_var.trace_add("write", self._on_search_change)
-        
-        search_entry = ttk.Entry(search_frame, textvariable=self.search_var, font=self.FONT_MAIN)
-        search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
-        
-        scanner_btn = ttk.Button(search_frame, text="🔄 Scanner", command=self._on_scanner_click)
-        scanner_btn.pack(side=tk.LEFT)
     
     def _create_treeview_section(self, parent: ttk.Frame) -> None:
         """Créer la Treeview pour afficher les morceaux."""
@@ -327,26 +309,6 @@ class MainWindow(tk.Tk):
     def _bind_events(self) -> None:
         """Lier les événements."""
         pass
-    
-    def _on_search_change(self, *args) -> None:
-        """Appeler quand le texte de recherche change."""
-        search_text = self.search_var.get().lower()
-        
-        for item in self.treeview.get_children():
-            self.treeview.delete(item)
-        
-        self.filtered_tracks = [
-            track for track in self.all_tracks
-            if any(search_text in str(field).lower() for field in track[:3])
-        ]
-        
-        for track in self.filtered_tracks:
-            tags = self._get_match_tags(track[4])
-            self.treeview.insert("", tk.END, values=track, tags=tags)
-    
-    def _on_scanner_click(self) -> None:
-        """Appeler quand le bouton Scanner est cliqué."""
-        messagebox.showinfo("Scanner", "Rafraîchissement des données...")
     
     def _on_treeview_double_click(self, event) -> None:
         """Appeler au double-clic sur un morceau."""
