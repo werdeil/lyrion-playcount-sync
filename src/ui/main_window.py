@@ -665,8 +665,8 @@ class MainWindow(tk.Tk):
                         'artist': artist,
                         'title': title,
                         'url': url,
-                        'playcount': row[2] or 0,
-                        'lastplayed': row[3]
+                        'playCount': row[2] or 0,
+                        'lastPlayed': row[3]
                     }
             
             # Récupérer les tracks (avec données alternative si présentes)
