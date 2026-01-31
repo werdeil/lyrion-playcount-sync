@@ -197,7 +197,7 @@ class MainWindow(tk.Tk):
         )
         treeview_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        columns = ("Artiste", "Titre", "Album", "Plays", "Match?")
+        columns = ("Artiste", "Titre", "Album", "Plays (persist)", "Plays (alt)", "Match?")
         self.treeview = ttk.Treeview(
             treeview_frame,
             columns=columns,
@@ -208,7 +208,7 @@ class MainWindow(tk.Tk):
         self.treeview.heading("#0", text="")
         self.treeview.column("#0", width=0, stretch=tk.NO)
         
-        widths = [120, 200, 150, 60, 80]
+        widths = [120, 200, 150, 80, 80, 80]
         for col, width in zip(columns, widths):
             self.treeview.heading(col, text=col)
             self.treeview.column(col, width=width, anchor=tk.W)
@@ -383,15 +383,21 @@ class MainWindow(tk.Tk):
         item = selection[0]
         values = self.treeview.item(item, "values")
         
-        if len(values) >= 5:
-            artist, title, album, playcount, match = values[0], values[1], values[2], values[3], values[4]
+        if len(values) >= 6:
+            artist = values[0]
+            title = values[1]
+            album = values[2]
+            persist_play = values[3]
+            alt_play = values[4]
+            match = values[5]
             details = f"""
 Détails du morceau:
 
 Artiste: {artist}
 Titre: {title}
 Album: {album}
-Playcounts: {playcount}
+Playcount (persist): {persist_play}
+Playcount (alt): {alt_play}
 Correspondance: {match}
 
 Clic-droit sur le morceau pour voir les options de correspondance.
@@ -579,13 +585,20 @@ Clic-droit sur le morceau pour voir les options de correspondance.
         
         item = selection[0]
         values = self.treeview.item(item, "values")
-        artist, title, album, playcount, match = values[0], values[1], values[2], values[3], values[4]
-        
+        artist = values[0]
+        title = values[1]
+        album = values[2]
+        persist_play = values[3]
+        alt_play = values[4]
+        match = values[5]
+
         # Afficher les détails du morceau résolut
         messagebox.showinfo(
             "Morceau résolu",
             f"Le morceau '{artist} - {title}' a été marqué comme résolu.\n\n"
             f"Match trouvé: {match}\n"
+            f"Playcount (persist): {persist_play}\n"
+            f"Playcount (alt): {alt_play}\n"
             f"Playcounts seront synchronisés."
         )
         
@@ -617,13 +630,13 @@ Clic-droit sur le morceau pour voir les options de correspondance.
         try:
             # Afficher un message de chargement
             self.treeview.delete(*self.treeview.get_children())
-            self.treeview.insert('', 'end', values=('Chargement...', 'Veuillez patienter', '(En cours)', '...', '...'))
+            self.treeview.insert('', 'end', values=('Chargement...', 'Veuillez patienter', '(En cours)', '...', '...', '...'))
             self.update()
             
             # Récupérer d'abord TOUS les morceaux de alternativeplaycount pour le matching
             alternative_tracks = {}
             with self.db_manager.cursor(commit=False) as cursor:
-                cursor.execute("SELECT urlmd5, url FROM alternativeplaycount")
+                cursor.execute("SELECT urlmd5, url, playCount, lastPlayed FROM alternativeplaycount")
                 for row in cursor.fetchall():
                     url = row[1] or 'Unknown'
                     # Extraire artiste/titre
@@ -640,30 +653,34 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                     alternative_tracks[row[0]] = {
                         'artist': artist,
                         'title': title,
-                        'url': url
+                        'url': url,
+                        'playcount': row[2] or 0,
+                        'lastplayed': row[3]
                     }
             
-            # Récupérer les tracks manquants et les matcher
+            # Récupérer les tracks (avec données alternative si présentes)
             tracks_to_display = []
-            
             with self.db_manager.cursor(commit=False) as cursor:
                 cursor.execute("""
                     SELECT 
                         tp.urlmd5,
                         tp.url,
-                        tp.playCount,
-                        tp.lastPlayed,
-                        tp.rating
+                        tp.playCount AS persist_playcount,
+                        tp.lastPlayed AS persist_lastplayed,
+                        tp.rating,
+                        ap.playCount AS alt_playcount,
+                        ap.lastPlayed AS alt_lastplayed,
+                        ap.url AS alt_url
                     FROM tracks_persistent tp
-                    WHERE tp.urlmd5 NOT IN (SELECT urlmd5 FROM alternativeplaycount)
+                    LEFT JOIN alternativeplaycount ap ON tp.urlmd5 = ap.urlmd5
                     ORDER BY tp.url
                 """)
-                
+
                 for row in cursor.fetchall():
-                    # Extraire le titre et l'artiste de l'URL
+                    # Extraire le titre et l'artiste de l'URL (persist)
                     url = row[1] or 'Unknown'
                     parts = self._decode_url_parts(url)
-                    
+
                     if len(parts) >= 3:
                         artist = parts[-3]
                         album = parts[-2]
@@ -676,17 +693,24 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                         artist = 'Unknown Artist'
                         title = url.replace('.mp3', '').replace('.flac', '')
                         album = 'Unknown Album'
-                    
+
+                    persist_playcount = row[2] or 0
+                    persist_lastplayed = row[3]
+                    rating = row[4]
+                    alt_playcount = row[5]
+                    alt_lastplayed = row[6]
+
                     track_data = {
                         'urlmd5': row[0],
                         'title': title,
                         'artist': artist,
                         'album': album,
                         'url': url,
-                        'playcount': row[2] or 0,
-                        'lastplayed': row[3],
-                        'rating': row[4],
-                        'has_alternative': False
+                        'persist_playcount': persist_playcount,
+                        'persist_lastplayed': persist_lastplayed,
+                        'rating': rating,
+                        'alt_playcount': alt_playcount,
+                        'alt_lastplayed': alt_lastplayed
                     }
                     self.all_tracks.append(track_data)
                     
@@ -705,19 +729,25 @@ Clic-droit sur le morceau pour voir les options de correspondance.
                         
                         if best_score > 0:
                             match_str = f"⚠ {best_score:.0f}%" if best_score < 90 else f"✓ {best_score:.0f}%"
-                    
-                    tracks_to_display.append((
-                        track_data['artist'],
-                        track_data['title'],
-                        track_data['album'],
-                        track_data['playcount'],
-                        match_str
-                    ))
+
+                    tracks_to_display.append(
+                        (
+                            track_data['artist'],
+                            track_data['title'],
+                            track_data['album'],
+                            str(track_data.get('persist_playcount', 0)),
+                            str(track_data.get('alt_playcount', '')),
+                            match_str
+                        )
+                    )
             
             # Maintenant afficher tous les tracks en batch
             self.treeview.delete(*self.treeview.get_children())
             for i, track_values in enumerate(tracks_to_display):
-                self.treeview.insert('', 'end', values=track_values)
+                # Appliquer tags de couleur basés sur le champ match (dernier)
+                match_field = track_values[-1]
+                tags = self._get_match_tags(match_field)
+                self.treeview.insert('', 'end', values=track_values, tags=tags)
                 # Mettre à jour l'interface tous les 100 items
                 if (i + 1) % 100 == 0:
                     self.update()
@@ -765,7 +795,7 @@ Clic-droit sur le morceau pour voir les options de correspondance.
         else:
             match_str = f"✗ {match_score:.0f}%"
         
-        track_data = (artist, title, album, str(playcount), match_str)
+        track_data = (artist, title, album, str(playcount), "", match_str)
         tags = self._get_match_tags(match_str)
         
         self.treeview.insert("", tk.END, values=track_data, tags=tags)
