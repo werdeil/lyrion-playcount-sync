@@ -1,10 +1,29 @@
 """Requêtes de base de données pour les playcounts."""
 
+import re
+from urllib.parse import unquote
+from pathlib import PurePosixPath
 from typing import List, Tuple, Dict, Optional
 from src.models import Track
 from src.utils import setup_logger
 
 logger = setup_logger(__name__)
+
+
+def _parse_url_metadata(url: str) -> Dict[str, str]:
+    """Extrait title/album/artist depuis une URL de fichier Lyrion.
+
+    Exemple : file:///media/.../Artist/Album/01 Track.m4a
+    → title="01 Track", album="Album", artist="Artist"
+    """
+    if not url:
+        return {"title": "", "album_title": "", "artist_name": ""}
+    decoded = unquote(url.replace("file://", ""))
+    p = PurePosixPath(decoded)
+    title = re.sub(r"^\d+\s*[-–—.]?\s*", "", p.stem).strip() or p.stem
+    album = p.parent.name if p.parent != p.parent.parent else ""
+    artist = p.parent.parent.name if p.parent.parent != p.parent.parent.parent else ""
+    return {"title": title, "album_title": album, "artist_name": artist}
 
 
 class PlaycountQueries:
@@ -365,40 +384,34 @@ class SyncDetector:
         """
         try:
             missing = []
-            
+
             with db_manager.cursor(commit=False) as cursor:
                 cursor.execute("""
-                    SELECT 
+                    SELECT
                         tp.urlmd5,
-                        tp.playcount,
-                        tp.lastplayed,
+                        tp.playCount,
+                        tp.lastPlayed,
                         tp.rating,
-                        t.title,
-                        t.url,
-                        a.title as album_title,
-                        c.name as artist_name
+                        tp.url
                     FROM tracks_persistent tp
                     LEFT JOIN alternativeplaycount ap ON tp.urlmd5 = ap.urlmd5
-                    LEFT JOIN tracks t ON tp.urlmd5 = t.urlmd5
-                    LEFT JOIN albums a ON t.album = a.id
-                    LEFT JOIN contributor_track ct ON t.id = ct.track 
-                        AND ct.role IN (1, 5, 6)
-                    LEFT JOIN contributors c ON ct.contributor = c.id
                     WHERE ap.urlmd5 IS NULL
-                    ORDER BY tp.playcount DESC
+                    ORDER BY tp.playCount DESC
                 """)
-                
+
                 for row in cursor.fetchall():
+                    url = row[4] or ""
+                    meta = _parse_url_metadata(url)
                     missing.append({
                         'urlmd5': row[0],
                         'playcount': row[1] or 0,
                         'lastplayed': row[2] or 0,
                         'rating': row[3] or 0,
-                        'title': row[4] or "[ORPHELIN]",
-                        'url': row[5] or "",
-                        'album_title': row[6] or "",
-                        'artist_name': row[7] or "",
-                        'url_orphaned': row[4] is None  # Flag si title est NULL
+                        'title': meta['title'] or "[ORPHELIN]",
+                        'url': url,
+                        'album_title': meta['album_title'],
+                        'artist_name': meta['artist_name'],
+                        'url_orphaned': not url,
                     })
             
             logger.info(f"Trouvé {len(missing)} morceaux manquants dans alternativeplaycount")
@@ -436,37 +449,32 @@ class SyncDetector:
         """
         try:
             tracks = []
-            
+
             with db_manager.cursor(commit=False) as cursor:
                 cursor.execute("""
-                    SELECT 
+                    SELECT
                         ap.urlmd5,
-                        ap.playcount,
-                        ap.lastplayed,
-                        ap.source,
-                        t.title,
-                        t.url,
-                        a.title as album_title,
-                        c.name as artist_name
+                        ap.playCount,
+                        ap.lastPlayed,
+                        ap.remote,
+                        ap.url
                     FROM alternativeplaycount ap
-                    LEFT JOIN tracks t ON ap.urlmd5 = t.urlmd5
-                    LEFT JOIN albums a ON t.album = a.id
-                    LEFT JOIN contributor_track ct ON t.id = ct.track 
-                        AND ct.role IN (1, 5, 6)
-                    LEFT JOIN contributors c ON ct.contributor = c.id
-                    ORDER BY ap.playcount DESC
+                    ORDER BY ap.playCount DESC
                 """)
-                
+
                 for row in cursor.fetchall():
+                    url = row[4] or ""
+                    meta = _parse_url_metadata(url)
+                    source = "remote" if row[3] else "local"
                     tracks.append({
                         'urlmd5': row[0],
                         'playcount': row[1] or 0,
                         'lastplayed': row[2] or 0,
-                        'source': row[3] or "",
-                        'title': row[4] or "",
-                        'url': row[5] or "",
-                        'album_title': row[6] or "",
-                        'artist_name': row[7] or ""
+                        'source': source,
+                        'title': meta['title'],
+                        'url': url,
+                        'album_title': meta['album_title'],
+                        'artist_name': meta['artist_name'],
                     })
             
             logger.info(f"Récupéré {len(tracks)} morceaux de alternativeplaycount")
@@ -504,78 +512,47 @@ class SyncDetector:
             with db_manager.cursor(commit=False) as cursor:
                 if source_table == "tracks_persistent":
                     cursor.execute("""
-                        SELECT 
-                            tp.urlmd5,
-                            tp.playcount,
-                            tp.lastplayed,
-                            tp.rating,
-                            t.id,
-                            t.title,
-                            t.url,
-                            a.title as album_title,
-                            c.name as artist_name,
-                            COUNT(ct.id) as contributor_count
-                        FROM tracks_persistent tp
-                        LEFT JOIN tracks t ON tp.urlmd5 = t.urlmd5
-                        LEFT JOIN albums a ON t.album = a.id
-                        LEFT JOIN contributor_track ct ON t.id = ct.track
-                        LEFT JOIN contributors c ON ct.contributor = c.id
-                        WHERE tp.urlmd5 = ?
-                        GROUP BY tp.urlmd5
+                        SELECT urlmd5, playCount, lastPlayed, rating, url
+                        FROM tracks_persistent
+                        WHERE urlmd5 = ?
                     """, (urlmd5,))
-                else:  # alternativeplaycount
+                else:
                     cursor.execute("""
-                        SELECT 
-                            ap.urlmd5,
-                            ap.playcount,
-                            ap.lastplayed,
-                            ap.source,
-                            t.id,
-                            t.title,
-                            t.url,
-                            a.title as album_title,
-                            c.name as artist_name,
-                            COUNT(ct.id) as contributor_count
-                        FROM alternativeplaycount ap
-                        LEFT JOIN tracks t ON ap.urlmd5 = t.urlmd5
-                        LEFT JOIN albums a ON t.album = a.id
-                        LEFT JOIN contributor_track ct ON t.id = ct.track
-                        LEFT JOIN contributors c ON ct.contributor = c.id
-                        WHERE ap.urlmd5 = ?
-                        GROUP BY ap.urlmd5
+                        SELECT urlmd5, playCount, lastPlayed, remote, url
+                        FROM alternativeplaycount
+                        WHERE urlmd5 = ?
                     """, (urlmd5,))
-                
+
                 row = cursor.fetchone()
-                
                 if not row:
                     return None
-                
+
+                url = row[4] or ""
+                meta = _parse_url_metadata(url)
+
                 if source_table == "tracks_persistent":
                     return {
                         'urlmd5': row[0],
                         'playcount': row[1] or 0,
                         'lastplayed': row[2] or 0,
                         'rating': row[3] or 0,
-                        'track_id': row[4],
-                        'title': row[5] or "[ORPHELIN]",
-                        'url': row[6] or "",
-                        'album_title': row[7] or "",
-                        'artist_name': row[8] or "",
-                        'contributor_count': row[9] or 0,
-                        'source': 'tracks_persistent'
+                        'title': meta['title'] or "[ORPHELIN]",
+                        'url': url,
+                        'album_title': meta['album_title'],
+                        'artist_name': meta['artist_name'],
+                        'source': 'tracks_persistent',
                     }
                 else:
+                    source = "remote" if row[3] else "local"
                     return {
                         'urlmd5': row[0],
                         'playcount': row[1] or 0,
                         'lastplayed': row[2] or 0,
-                        'source': row[3] or "",
-                        'track_id': row[4],
-                        'title': row[5] or "",
-                        'url': row[6] or "",
-                        'album_title': row[7] or "",
-                        'artist_name': row[8] or "",
-                        'contributor_count': row[9] or 0
+                        'source': source,
+                        'title': meta['title'],
+                        'url': url,
+                        'album_title': meta['album_title'],
+                        'artist_name': meta['artist_name'],
                     }
                 
         except Exception as e:
@@ -654,12 +631,11 @@ class SyncDetector:
                 """)
                 missing = cursor.fetchone()[0] or 0
                 
-                # Orphelins (pas de track.title)
+                # Orphelins (url vide dans tracks_persistent)
                 cursor.execute("""
-                    SELECT COUNT(DISTINCT tp.urlmd5)
-                    FROM tracks_persistent tp
-                    LEFT JOIN tracks t ON tp.urlmd5 = t.urlmd5
-                    WHERE t.title IS NULL
+                    SELECT COUNT(DISTINCT urlmd5)
+                    FROM tracks_persistent
+                    WHERE url IS NULL OR url = ''
                 """)
                 orphaned = cursor.fetchone()[0] or 0
                 

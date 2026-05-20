@@ -1,317 +1,124 @@
-"""Tests pour la classe SyncDetector."""
+"""Tests d'intégration pour SyncDetector.
 
-import sys
-import logging
-from pathlib import Path
+Ces tests nécessitent une base de données Lyrion accessible.
+Ils sont automatiquement sautés si aucune BD n'est détectée.
+"""
 
-# Ajouter le répertoire racine au path
-sys.path.insert(0, str(Path(__file__).parent))
+import pytest
 
-from src.database import DatabaseManager, SyncDetector
-from src.utils import setup_logger
-
-logger = setup_logger(__name__)
-logging.basicConfig(level=logging.DEBUG)
+from src.database import DatabaseManager, DatabaseConnectionError, SyncDetector
 
 
-def test_find_missing_in_alternative():
-    """Test : Trouver les morceaux manquants dans alternativeplaycount."""
-    print("\n" + "="*70)
-    print("TEST 1 : find_missing_in_alternative()")
-    print("="*70)
-    
+@pytest.fixture(scope="module")
+def db_manager():
+    """Connexion à la BD Lyrion locale. Skip si indisponible."""
     try:
         manager = DatabaseManager(auto_detect=True)
-        
-        missing = SyncDetector.find_missing_in_alternative(manager)
-        
-        print(f"\n✅ Trouvé {len(missing)} morceaux manquants")
-        
-        # Afficher les 5 premiers
-        if missing:
-            print("\nPremiers morceaux manquants (top 5 par playcount) :")
-            for i, track in enumerate(missing[:5], 1):
-                orphaned_flag = " [ORPHELIN]" if track['url_orphaned'] else ""
-                print(f"  {i}. {track['artist_name'][:20]:20} - {track['title'][:30]:30} "
-                      f"({track['playcount']} plays){orphaned_flag}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur : {e}")
-        logger.exception(e)
-        return False
+        manager.connect(readonly=True)
+        yield manager
+        manager.close()
+    except (DatabaseConnectionError, Exception) as e:
+        pytest.skip(f"BD Lyrion non accessible : {e}")
 
 
-def test_get_all_alternative_tracks():
-    """Test : Récupérer tous les morceaux alternativeplaycount."""
-    print("\n" + "="*70)
-    print("TEST 2 : get_all_alternative_tracks()")
-    print("="*70)
-    
-    try:
-        manager = DatabaseManager(auto_detect=True)
-        
-        tracks = SyncDetector.get_all_alternative_tracks(manager)
-        
-        print(f"\n✅ Récupéré {len(tracks)} morceaux de alternativeplaycount")
-        
-        # Stats
-        total_playcount = sum(t['playcount'] for t in tracks)
-        avg_playcount = total_playcount / len(tracks) if tracks else 0
-        
-        print(f"\nStatistiques :")
-        print(f"  Total : {len(tracks)} morceaux")
-        print(f"  Playcount total : {total_playcount}")
-        print(f"  Playcount moyen : {avg_playcount:.2f}")
-        
-        # Afficher les 5 premiers
-        if tracks:
-            print("\nTop 5 morceaux (par playcount) :")
-            for i, track in enumerate(tracks[:5], 1):
-                source = f" [{track['source']}]" if track['source'] else ""
-                print(f"  {i}. {track['artist_name'][:20]:20} - {track['title'][:30]:30} "
-                      f"({track['playcount']} plays){source}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur : {e}")
-        logger.exception(e)
-        return False
+class TestFindMissingInAlternative:
 
+    def test_returns_list(self, db_manager):
+        result = SyncDetector.find_missing_in_alternative(db_manager)
+        assert isinstance(result, list)
 
-def test_get_track_details():
-    """Test : Récupérer les détails d'un morceau spécifique."""
-    print("\n" + "="*70)
-    print("TEST 3 : get_track_details()")
-    print("="*70)
-    
-    try:
-        manager = DatabaseManager(auto_detect=True)
-        
-        # Trouver un morceau manquant
-        missing = SyncDetector.find_missing_in_alternative(manager)
-        
+    def test_each_item_has_required_keys(self, db_manager):
+        result = SyncDetector.find_missing_in_alternative(db_manager)
+        for item in result[:10]:
+            for key in ("urlmd5", "playcount", "lastplayed", "title",
+                        "url", "album_title", "artist_name", "url_orphaned"):
+                assert key in item, f"Clé manquante : {key}"
+
+    def test_playcount_non_negative(self, db_manager):
+        result = SyncDetector.find_missing_in_alternative(db_manager)
+        for item in result:
+            assert item["playcount"] >= 0
+
+    def test_no_item_in_alternativeplaycount(self, db_manager):
+        missing = SyncDetector.find_missing_in_alternative(db_manager)
         if not missing:
-            print("\n⚠️  Pas de morceaux manquants pour tester")
-            return True
-        
-        # Prendre le premier
-        urlmd5 = missing[0]['urlmd5']
-        
-        # Récupérer détails
-        details = SyncDetector.get_track_details(manager, urlmd5, "tracks_persistent")
-        
-        print(f"\n✅ Détails récupérés pour {urlmd5}")
-        print(f"\nInformations :")
-        print(f"  Artiste : {details['artist_name']}")
-        print(f"  Titre : {details['title']}")
-        print(f"  Album : {details['album_title']}")
-        print(f"  URL : {details['url']}")
-        print(f"  Playcount : {details['playcount']}")
-        print(f"  Lastplayed : {details['lastplayed']}")
-        print(f"  Rating : {details.get('rating', 'N/A')}")
-        print(f"  Contributeurs : {details['contributor_count']}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur : {e}")
-        logger.exception(e)
-        return False
+            pytest.skip("Aucune désynchronisation dans cette BD")
+        urlmd5_set = {item["urlmd5"] for item in missing}
+        with db_manager.cursor(commit=False) as cursor:
+            cursor.execute("SELECT urlmd5 FROM alternativeplaycount")
+            alt_set = {row[0] for row in cursor.fetchall()}
+        overlap = urlmd5_set & alt_set
+        assert len(overlap) == 0, f"Des urlmd5 se retrouvent dans les deux tables : {overlap}"
 
 
-def test_count_missing():
-    """Test : Compter les morceaux manquants."""
-    print("\n" + "="*70)
-    print("TEST 4 : count_missing()")
-    print("="*70)
-    
-    try:
-        manager = DatabaseManager(auto_detect=True)
-        
-        count = SyncDetector.count_missing(manager)
-        
-        print(f"\n✅ Nombre de morceaux manquants : {count}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur : {e}")
-        logger.exception(e)
-        return False
+class TestGetAllAlternativeTracks:
+
+    def test_returns_list(self, db_manager):
+        result = SyncDetector.get_all_alternative_tracks(db_manager)
+        assert isinstance(result, list)
+
+    def test_each_item_has_required_keys(self, db_manager):
+        result = SyncDetector.get_all_alternative_tracks(db_manager)
+        for item in result[:10]:
+            for key in ("urlmd5", "playcount", "lastplayed", "source",
+                        "title", "url", "album_title", "artist_name"):
+                assert key in item, f"Clé manquante : {key}"
+
+    def test_playcount_non_negative(self, db_manager):
+        result = SyncDetector.get_all_alternative_tracks(db_manager)
+        for item in result:
+            assert item["playcount"] >= 0
 
 
-def test_get_sync_stats():
-    """Test : Récupérer les stats de synchronisation."""
-    print("\n" + "="*70)
-    print("TEST 5 : get_sync_stats()")
-    print("="*70)
-    
-    try:
-        manager = DatabaseManager(auto_detect=True)
-        
-        stats = SyncDetector.get_sync_stats(manager)
-        
-        print(f"\n✅ Stats de synchronisation :")
-        print(f"  Total tracks_persistent : {stats['total_persistent']}")
-        print(f"  Total alternativeplaycount : {stats['total_alternative']}")
-        print(f"  Morceaux manquants : {stats['missing_in_alternative']}")
-        print(f"  Morceaux orphelins : {stats['orphaned']}")
-        print(f"  Ratio synchronisation : {stats['sync_ratio']}%")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur : {e}")
-        logger.exception(e)
-        return False
+class TestCountMissing:
+
+    def test_count_is_integer(self, db_manager):
+        count = SyncDetector.count_missing(db_manager)
+        assert isinstance(count, int)
+        assert count >= 0
+
+    def test_count_matches_find_missing_length(self, db_manager):
+        count = SyncDetector.count_missing(db_manager)
+        missing = SyncDetector.find_missing_in_alternative(db_manager)
+        # count_missing déduplique, find_missing peut avoir des doublons d'artiste
+        unique_urlmd5s = len({item["urlmd5"] for item in missing})
+        assert count == unique_urlmd5s
 
 
-def test_missing_with_orphaned_files():
-    """Test : Vérifier la gestion des fichiers orphelins."""
-    print("\n" + "="*70)
-    print("TEST 6 : Gestion des fichiers orphelins")
-    print("="*70)
-    
-    try:
-        manager = DatabaseManager(auto_detect=True)
-        
-        missing = SyncDetector.find_missing_in_alternative(manager)
-        
-        orphaned = [t for t in missing if t['url_orphaned']]
-        with_metadata = [t for t in missing if not t['url_orphaned']]
-        
-        print(f"\n✅ Analyse des fichiers orphelins :")
-        print(f"  Total manquants : {len(missing)}")
-        print(f"  Orphelins (title=NULL) : {len(orphaned)}")
-        print(f"  Avec métadonnées : {len(with_metadata)}")
-        print(f"  Pourcentage orphelins : {(len(orphaned)/len(missing)*100):.1f}%" if missing else "N/A")
-        
-        if orphaned:
-            print("\nExemples de fichiers orphelins :")
-            for track in orphaned[:3]:
-                print(f"  - {track['urlmd5']} (playcount={track['playcount']})")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur : {e}")
-        logger.exception(e)
-        return False
+class TestGetSyncStats:
+
+    def test_returns_all_expected_keys(self, db_manager):
+        stats = SyncDetector.get_sync_stats(db_manager)
+        for key in ("total_persistent", "total_alternative",
+                    "missing_in_alternative", "orphaned", "sync_ratio"):
+            assert key in stats
+
+    def test_sync_ratio_in_range(self, db_manager):
+        stats = SyncDetector.get_sync_stats(db_manager)
+        assert 0 <= stats["sync_ratio"] <= 100
+
+    def test_missing_count_consistent(self, db_manager):
+        stats = SyncDetector.get_sync_stats(db_manager)
+        assert stats["missing_in_alternative"] <= stats["total_persistent"]
 
 
-def test_alternative_track_with_null_title():
-    """Test : Morceaux alternativeplaycount avec title NULL."""
-    print("\n" + "="*70)
-    print("TEST 7 : Morceaux alternativeplaycount sans title")
-    print("="*70)
-    
-    try:
-        manager = DatabaseManager(auto_detect=True)
-        
-        tracks = SyncDetector.get_all_alternative_tracks(manager)
-        
-        null_titles = [t for t in tracks if not t['title']]
-        
-        print(f"\n✅ Analyse des morceaux sans title :")
-        print(f"  Total : {len(tracks)}")
-        print(f"  Sans title : {len(null_titles)}")
-        print(f"  Pourcentage : {(len(null_titles)/len(tracks)*100):.1f}%" if tracks else "N/A")
-        
-        if null_titles:
-            print(f"\nPremiers morceaux sans title :")
-            for track in null_titles[:5]:
-                print(f"  - urlmd5={track['urlmd5']} source={track['source']} "
-                      f"playcount={track['playcount']}")
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur : {e}")
-        logger.exception(e)
-        return False
+class TestGetTrackDetails:
 
+    def test_returns_none_for_nonexistent_urlmd5(self, db_manager):
+        result = SyncDetector.get_track_details(
+            db_manager, "nonexistent_urlmd5_xyz_000", "tracks_persistent"
+        )
+        assert result is None
 
-def test_invalid_parameters():
-    """Test : Gestion des paramètres invalides."""
-    print("\n" + "="*70)
-    print("TEST 8 : Gestion des paramètres invalides")
-    print("="*70)
-    
-    try:
-        manager = DatabaseManager(auto_detect=True)
-        
-        # Tester table invalide
-        try:
-            SyncDetector.get_track_details(manager, "abc123", "invalid_table")
-            print("❌ Devrait avoir levé ValueError")
-            return False
-        except ValueError as e:
-            print(f"✅ ValueError correctement levée : {e}")
-        
-        # Tester urlmd5 non existant
-        result = SyncDetector.get_track_details(manager, "nonexistent" * 4, "tracks_persistent")
-        if result is None:
-            print("✅ Retour None pour urlmd5 inexistant")
-        else:
-            print(f"❌ Devrait retourner None, got {result}")
-            return False
-        
-        return True
-        
-    except Exception as e:
-        print(f"❌ Erreur : {e}")
-        logger.exception(e)
-        return False
+    def test_raises_for_invalid_table(self, db_manager):
+        with pytest.raises(ValueError):
+            SyncDetector.get_track_details(db_manager, "any", "invalid_table")
 
-
-def main():
-    """Lance tous les tests."""
-    print("\n" + "#"*70)
-    print("# TESTS DE LA CLASSE SyncDetector")
-    print("#"*70)
-    
-    tests = [
-        test_find_missing_in_alternative,
-        test_get_all_alternative_tracks,
-        test_get_track_details,
-        test_count_missing,
-        test_get_sync_stats,
-        test_missing_with_orphaned_files,
-        test_alternative_track_with_null_title,
-        test_invalid_parameters,
-    ]
-    
-    results = []
-    for test in tests:
-        try:
-            results.append(test())
-        except KeyboardInterrupt:
-            print("\n\n⏸️  Tests interrompus")
-            break
-        except Exception as e:
-            print(f"\n❌ Erreur non gérée : {e}")
-            logger.exception(e)
-            results.append(False)
-    
-    # Résumé
-    print("\n" + "#"*70)
-    print("# RÉSUMÉ")
-    print("#"*70)
-    passed = sum(results)
-    total = len(results)
-    print(f"\nTests réussis : {passed}/{total}")
-    print(f"Taux de réussite : {(passed/total*100):.1f}%")
-    
-    if passed == total:
-        print("\n✅ TOUS LES TESTS RÉUSSIS !")
-    else:
-        print(f"\n⚠️  {total - passed} test(s) échoué(s)")
-    
-    return 0 if passed == total else 1
-
-
-if __name__ == "__main__":
-    sys.exit(main())
+    def test_returns_details_for_known_track(self, db_manager):
+        missing = SyncDetector.find_missing_in_alternative(db_manager)
+        if not missing:
+            pytest.skip("Aucun morceau manquant pour tester get_track_details")
+        urlmd5 = missing[0]["urlmd5"]
+        details = SyncDetector.get_track_details(db_manager, urlmd5, "tracks_persistent")
+        assert details is not None
+        assert details["urlmd5"] == urlmd5

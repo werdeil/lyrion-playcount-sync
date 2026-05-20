@@ -240,8 +240,8 @@ class TrackMatcher:
                     missing_track, alternative_tracks, top_n
                 )
             
-            logger.debug(f"Trouvé {len(matches)} correspondances "
-                        f"(top: {matches[0]['match_score']:.1f}% si existe)")
+            top_info = f"{matches[0]['match_score']:.1f}%" if matches else "aucun"
+            logger.debug(f"Trouvé {len(matches)} correspondances (top: {top_info})")
             
             return matches
             
@@ -388,107 +388,3 @@ class TrackMatcher:
         """Vide le cache des strings normalisées."""
         self._normalize_cache.clear()
         logger.debug("Cache normalisé vidé")
-
-
-
-    """Apparie les tracks basé sur la similarité de titre et artiste."""
-    
-    def __init__(self, threshold: int = 85, method: str = "token_sort_ratio"):
-        """
-        Initialise le matcher.
-        
-        Args:
-            threshold: Seuil de similarité (0-100)
-            method: Méthode de comparaison (ratio, partial_ratio, token_sort_ratio, token_set_ratio)
-        """
-        self.threshold = threshold
-        self.method = method
-        self.similarity_fn = getattr(fuzz, method)
-        
-        logger.info(f"FuzzyMatcher initialisé : threshold={threshold}, method={method}")
-    
-    def match_tracks(
-        self,
-        source_tracks: List[Track],
-        target_tracks: List[Track]
-    ) -> List[TrackMatch]:
-        """
-        Apparie les tracks entre deux listes.
-        
-        Args:
-            source_tracks: Liste des tracks source
-            target_tracks: Liste des tracks cible
-            
-        Returns:
-            Liste des correspondances trouvées
-        """
-        matches = []
-        
-        for source in source_tracks:
-            best_match = None
-            best_score = 0
-            
-            for target in target_tracks:
-                # Calcul de la similarité
-                score = self._calculate_similarity(source, target)
-                
-                if score > best_score and score >= self.threshold:
-                    best_score = score
-                    best_match = target
-            
-            if best_match:
-                matches.append(TrackMatch(
-                    source_track=source,
-                    target_track=best_match,
-                    similarity_score=best_score
-                ))
-        
-        logger.info(f"Trouvé {len(matches)} correspondances sur {len(source_tracks)} tracks")
-        return matches
-    
-    def _calculate_similarity(self, source: Track, target: Track) -> float:
-        """
-        Calcule la similarité entre deux tracks.
-        
-        Args:
-            source: Track source
-            target: Track cible
-            
-        Returns:
-            Score de similarité (0-100)
-        """
-        # Combine titre et artiste pour la comparaison
-        source_str = f"{source.artist} {source.title}"
-        target_str = f"{target.artist} {target.title}"
-        
-        score = self.similarity_fn(source_str, target_str)
-        return float(score)
-    
-    def find_best_match(
-        self,
-        track: Track,
-        candidates: List[Track]
-    ) -> Optional[Tuple[Track, float]]:
-        """
-        Trouve la meilleure correspondance pour un track.
-        
-        Args:
-            track: Track à matcher
-            candidates: Liste des tracks candidats
-            
-        Returns:
-            Tuple (track correspondant, score) ou None
-        """
-        best_match = None
-        best_score = 0
-        
-        for candidate in candidates:
-            score = self._calculate_similarity(track, candidate)
-            if score > best_score:
-                best_score = score
-                best_match = candidate
-        
-        if best_match and best_score >= self.threshold:
-            return (best_match, best_score)
-        
-        return None

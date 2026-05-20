@@ -1,0 +1,76 @@
+# Configuration d'exemple - Copiez en config.yaml et adaptez vos paramètres
+
+# ===== Source distante (SCP) =====
+remote:
+  # Nom ou IP de l'hôte distant
+  host: ""
+  # Utilisateur SSH
+  user: ""
+  # Chemin de persist.db sur l'hôte distant
+  db_path: /var/lib/squeezeboxserver/prefs/persist.db
+  # Port SSH (défaut 22)
+  ssh_port: 22
+  # Délai d'attente en secondes
+  timeout: 30
+
+# ===== Configuration Base de Données =====
+database:
+  # Chemin vers la base de données persist.db de Lyrion
+  path: "./persist.db"
+  # Sauvegarde automatique de la base de données
+  auto_backup: true
+  # Sauvegarder au démarrage de l'application
+  backup_on_startup: true
+  # Nombre de jours de rétention des sauvegardes
+  backup_retention_days: 7
+
+# ===== Configuration du Matching =====
+matching:
+  # Seuil de correspondance automatique (0-100)
+  # Les pistes avec un score >= à ce seuil sont automatiquement matchées
+  auto_match_threshold: 90
+  # Score minimum pour afficher des suggestions (0-100)
+  suggestion_min_score: 50
+  # Nombre maximum de suggestions à afficher
+  max_suggestions: 5
+  # Poids des critères de matching (doivent sommer à 100)
+  weights:
+    title: 70      # Poids du titre
+    artist: 20     # Poids de l'artiste
+    album: 10      # Poids de l'album
+
+# ===== Configuration de la Synchronisation =====
+sync:
+  # Action par défaut : COPY, MERGE, SKIP
+  # COPY: Copier les données de la source vers la destination
+  # MERGE: Fusionner les données des deux sources
+  # SKIP: Ignorer la piste
+  default_action: "COPY"
+  # Supprimer les pistes après synchronisation
+  delete_after_sync: true
+  # Score minimum pour confirmer automatiquement (sinon confirmation manuelle)
+  confirm_below_score: 70
+
+# ===== Configuration de l'Interface =====
+ui:
+  # Thème de l'interface : darkly, bootstrap, flatly, etc.
+  theme: "darkly"
+  # Taille de la fenêtre initiale
+  window_size: "1200x800"
+  # Intervalle d'auto-refresh en secondes (0 = désactivé)
+  auto_refresh_seconds: 0
+  # Afficher les tooltips (infobulles)
+  show_tooltips: true
+
+# ===== Configuration du Logging =====
+logging:
+  # Niveau de logging : DEBUG, INFO, WARNING, ERROR, CRITICAL
+  # DEBUG: Messages détaillés pour débogage
+  # INFO: Messages généraux (défaut)
+  # WARNING: Avertissements et erreurs possibles
+  # ERROR: Erreurs seulement
+  # CRITICAL: Erreurs graves seulement
+  level: "INFO"
+  # Chemin du fichier de log
+  # Les logs seront aussi affichés en console
+  file: "./logs/sync.log"

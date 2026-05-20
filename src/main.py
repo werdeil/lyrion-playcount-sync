@@ -219,7 +219,7 @@ class Application:
             self.logger.info("✓ Détecteur de sync initialisé")
             
             # Initialiser le matcher de pistes
-            self.matcher = TrackMatcher(self.config.matching)
+            self.matcher = TrackMatcher()
             self.logger.info("✓ Matcher de pistes initialisé")
             
             return True
