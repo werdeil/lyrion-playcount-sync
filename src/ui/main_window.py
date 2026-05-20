@@ -180,7 +180,7 @@ class MainWindow(tk.Tk):
         )
         treeview_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
-        columns = ("Artiste", "Titre", "Album", "Plays (persist)", "Plays (alt)", "Dernier (persist)", "Dernier (alt)", "Match?")
+        columns = ("Artiste", "Titre", "Album", "Écoutes (persist)", "Écoutes (alt)", "Dernier (persist)", "Dernier (alt)", "Correspondance")
         self.treeview = ttk.Treeview(
             treeview_frame,
             columns=columns,
@@ -279,7 +279,7 @@ class MainWindow(tk.Tk):
         actions_frame = ttk.Frame(parent)
         actions_frame.pack(fill=tk.X, pady=(0, 10))
         
-        ttk.Button(actions_frame, text="⚡ Sync auto", command=self._sync_selected_tracks).pack(side=tk.LEFT, padx=2)
+        ttk.Button(actions_frame, text="⚡ Sync sélection", command=self._sync_selected_tracks).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions_frame, text="🚫 Ignorer", command=self._ignore_selected_tracks).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions_frame, text="⚙️ Config", command=self._on_config_click).pack(side=tk.LEFT, padx=2)
     
@@ -317,7 +317,7 @@ class MainWindow(tk.Tk):
             values = self.treeview.item(selection[0], "values")
             messagebox.showinfo(
                 "Détails du morceau",
-                f"Artiste: {values[0]}\nTitre: {values[1]}\nAlbum: {values[2]}\nPlays: {values[3]}\nMatch: {values[4]}"
+                f"Artiste : {values[0]}\nTitre : {values[1]}\nAlbum : {values[2]}\nÉcoutes : {values[3]}\nCorrespondance : {values[7]}"
             )
     
     def _on_treeview_right_click(self, event) -> None:
@@ -326,7 +326,7 @@ class MainWindow(tk.Tk):
         if item:
             self.treeview.selection_set(item)
             menu = tk.Menu(self, tearoff=False)
-            menu.add_command(label="Voir suggestions de match", command=self._on_suggestions_click)
+            menu.add_command(label="Voir les suggestions", command=self._on_suggestions_click)
             menu.add_separator()
             menu.add_command(label="Ignorer ce morceau", command=self._on_ignore_click)
             menu.add_command(label="Marquer comme résolu", command=self._on_mark_resolved_click)
@@ -427,7 +427,7 @@ class MainWindow(tk.Tk):
             messagebox.showinfo("Succès", f"{synced_count} morceau(x) synchronisé(s) avec alternativeplaycount")
             print(f"[INFO] Total synchronisé: {synced_count} morceau(x)")
         else:
-            messagebox.showwarning("Pas de sync", "Aucun match avec score >= 60% trouvé")
+            messagebox.showwarning("Pas de synchronisation", "Aucune correspondance avec un score ≥ 60% trouvée")
     
     def _ignore_selected_tracks(self) -> None:
         """Ignorer les morceaux sélectionnés (les supprimer de la table persist et de la vue)."""
@@ -521,14 +521,14 @@ class MainWindow(tk.Tk):
         
         # Créer une fenêtre popup pour les suggestions
         suggestions_window = tk.Toplevel(self)
-        suggestions_window.title(f"Suggestions pour: {artist} - {title}")
+        suggestions_window.title(f"Suggestions pour : {artist} - {title}")
         suggestions_window.geometry("600x400")
         
         # Frame pour la recherche
         search_frame = ttk.Frame(suggestions_window)
         search_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Label(search_frame, text=f"Morceaux similaires à: {artist} - {title}").pack()
+        ttk.Label(search_frame, text=f"Morceaux similaires à : {artist} - {title}").pack()
         
         # Treeview pour les suggestions
         tree = ttk.Treeview(suggestions_window, columns=('Artist', 'Title', 'Score'), height=15)
@@ -540,7 +540,7 @@ class MainWindow(tk.Tk):
         tree.heading('#0', text='', anchor=tk.W)
         tree.heading('Artist', text='Artiste', anchor=tk.W)
         tree.heading('Title', text='Titre', anchor=tk.W)
-        tree.heading('Score', text='Match', anchor=tk.CENTER)
+        tree.heading('Score', text='Score', anchor=tk.CENTER)
         
         tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
@@ -607,10 +607,10 @@ class MainWindow(tk.Tk):
         messagebox.showinfo(
             "Morceau résolu",
             f"Le morceau '{artist} - {title}' a été marqué comme résolu.\n\n"
-            f"Match trouvé: {match}\n"
-            f"Playcount (persist): {persist_play}\n"
-            f"Playcount (alt): {alt_play}\n"
-            f"Playcounts seront synchronisés."
+            f"Correspondance : {match}\n"
+            f"Écoutes (persist) : {persist_play}\n"
+            f"Écoutes (alt) : {alt_play}\n"
+            f"Les écoutes seront synchronisées."
         )
         
         # Marquer comme résolu en changeant la couleur
