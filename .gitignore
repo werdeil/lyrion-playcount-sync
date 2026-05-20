@@ -52,6 +52,7 @@ playcount_sync.log
 *.backup
 *.db.bak*
 *.sql
+backups/
 
 # OS
 .DS_Store
