@@ -15,6 +15,9 @@ from datetime import datetime
 from typing import Optional, Callable
 from urllib.parse import unquote
 
+from src.utils.config import Config
+from src.utils.remote_sync import RemoteSync
+
 
 class MainWindow(tk.Tk):
     """Fenêtre principale de l'application Lyrion Playcount Sync."""
@@ -282,6 +285,22 @@ class MainWindow(tk.Tk):
         ttk.Button(actions_frame, text="⚡ Sync sélection", command=self._sync_selected_tracks).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions_frame, text="🚫 Ignorer", command=self._ignore_selected_tracks).pack(side=tk.LEFT, padx=2)
         ttk.Button(actions_frame, text="⚙️ Config", command=self._on_config_click).pack(side=tk.LEFT, padx=2)
+
+        cfg = Config.instance()
+        if cfg.remote.is_configured():
+            self.push_btn = ttk.Button(
+                actions_frame,
+                text="⬆ Mettre à jour BD distante",
+                command=self._push_remote_db,
+            )
+            self.push_btn.pack(side=tk.RIGHT, padx=2)
+
+            self.fetch_btn = ttk.Button(
+                actions_frame,
+                text="⬇ Récupérer BD distante",
+                command=self._fetch_remote_db,
+            )
+            self.fetch_btn.pack(side=tk.RIGHT, padx=2)
     
     def _decode_url_parts(self, url: str) -> list:
         """Décoder les parties d'une URL pour éviter les caractères encodés."""
@@ -474,38 +493,106 @@ class MainWindow(tk.Tk):
     
     def _on_config_click(self) -> None:
         """Ouvrir la fenêtre de configuration."""
-        config_window = tk.Toplevel(self)
-        config_window.title("Configuration")
-        config_window.geometry("400x250")
-        
-        # Section des seuils
-        ttk.Label(config_window, text="Seuil de correspondance (%):", font=self.FONT_SMALL).pack(anchor=tk.W, padx=10, pady=(10, 5))
-        
-        threshold_frame = ttk.Frame(config_window)
-        threshold_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
-        
-        threshold_scale = ttk.Scale(threshold_frame, from_=0, to=100, orient=tk.HORIZONTAL)
-        threshold_scale.set(70)
-        threshold_scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        threshold_label = ttk.Label(threshold_frame, text="70%", width=5)
-        threshold_label.pack(side=tk.LEFT, padx=(5, 0))
-        
-        def update_threshold(val):
+        cfg = Config.instance()
+
+        win = tk.Toplevel(self)
+        win.title("Configuration")
+        win.resizable(False, False)
+        win.grab_set()
+
+        notebook = ttk.Notebook(win)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # ── Onglet Général ──────────────────────────────────────────────
+        tab_general = ttk.Frame(notebook, padding=15)
+        notebook.add(tab_general, text="Général")
+
+        ttk.Label(tab_general, text="Seuil de correspondance automatique (%) :").grid(
+            row=0, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
+
+        threshold_var = tk.IntVar(value=cfg.matching.auto_match_threshold)
+        threshold_label = ttk.Label(tab_general, text=f"{threshold_var.get()}%", width=5)
+
+        def _on_threshold(val):
             threshold_label.config(text=f"{int(float(val))}%")
-        
-        threshold_scale.config(command=update_threshold)
-        
-        # Section des chemins
-        ttk.Label(config_window, text="Base de données:", font=self.FONT_SMALL).pack(anchor=tk.W, padx=10, pady=(10, 5))
-        ttk.Label(config_window, text=str(self.db_path), foreground="gray").pack(anchor=tk.W, padx=20, pady=(0, 10))
-        
-        # Boutons
-        button_frame = ttk.Frame(config_window)
-        button_frame.pack(fill=tk.X, padx=10, pady=10)
-        
-        ttk.Button(button_frame, text="Appliquer", command=lambda: messagebox.showinfo("Succès", "Configuration sauvegardée")).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Fermer", command=config_window.destroy).pack(side=tk.LEFT, padx=5)
+
+        scale = ttk.Scale(tab_general, from_=0, to=100, orient=tk.HORIZONTAL,
+                          variable=threshold_var, command=_on_threshold)
+        scale.grid(row=1, column=0, sticky=tk.EW, pady=(0, 15))
+        threshold_label.grid(row=1, column=1, padx=(8, 0))
+        tab_general.columnconfigure(0, weight=1)
+
+        ttk.Label(tab_general, text="Base de données :").grid(
+            row=2, column=0, columnspan=2, sticky=tk.W, pady=(0, 4))
+        ttk.Label(tab_general, text=str(self.db_path), foreground="gray").grid(
+            row=3, column=0, columnspan=2, sticky=tk.W)
+
+        # ── Onglet Serveur distant ───────────────────────────────────────
+        tab_remote = ttk.Frame(notebook, padding=15)
+        notebook.add(tab_remote, text="Serveur distant")
+
+        remote = cfg.remote
+
+        host_var     = tk.StringVar(value=remote.host)
+        user_var     = tk.StringVar(value=remote.user)
+        dbpath_var   = tk.StringVar(value=remote.db_path)
+        port_var     = tk.StringVar(value=str(remote.ssh_port))
+        timeout_var  = tk.StringVar(value=str(remote.timeout))
+
+        fields = [
+            ("Hôte :",           host_var),
+            ("Utilisateur :",    user_var),
+            ("Chemin distant :", dbpath_var),
+            ("Port SSH :",       port_var),
+            ("Délai (s) :",      timeout_var),
+        ]
+
+        for i, (label, var) in enumerate(fields):
+            ttk.Label(tab_remote, text=label).grid(row=i, column=0, sticky=tk.W, pady=3)
+            ttk.Entry(tab_remote, textvariable=var, width=35).grid(
+                row=i, column=1, sticky=tk.EW, padx=(10, 0), pady=3)
+
+        tab_remote.columnconfigure(1, weight=1)
+
+        # ── Boutons ──────────────────────────────────────────────────────
+        btn_frame = ttk.Frame(win, padding=(10, 0, 10, 10))
+        btn_frame.pack(fill=tk.X)
+
+        def _apply():
+            # Général
+            cfg.matching.auto_match_threshold = threshold_var.get()
+
+            # Remote
+            cfg.remote.host    = host_var.get().strip()
+            cfg.remote.user    = user_var.get().strip()
+            cfg.remote.db_path = dbpath_var.get().strip()
+            try:
+                cfg.remote.ssh_port = int(port_var.get())
+            except ValueError:
+                pass
+            try:
+                cfg.remote.timeout = int(timeout_var.get())
+            except ValueError:
+                pass
+
+            cfg.save_to_file("config.yaml")
+
+            # Activer/désactiver les boutons remote selon host+user
+            if hasattr(self, "fetch_btn"):
+                state = tk.NORMAL if cfg.remote.is_configured() else tk.DISABLED
+                self.fetch_btn.config(state=state)
+                self.push_btn.config(state=state)
+
+            messagebox.showinfo("Succès", "Configuration sauvegardée.")
+            win.destroy()
+
+        ttk.Button(btn_frame, text="Appliquer", command=_apply).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="Fermer", command=win.destroy).pack(side=tk.LEFT, padx=5)
+
+        win.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width()  - win.winfo_width())  // 2
+        y = self.winfo_y() + (self.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{x}+{y}")
     
     def _on_suggestions_click(self) -> None:
         """Afficher les meilleures suggestions de match pour le morceau sélectionné."""
@@ -620,6 +707,132 @@ class MainWindow(tk.Tk):
         self.treeview.tag_configure('resolved', foreground='green')
 
     
+    def _ask_yes_no(self, title: str, message: str) -> bool:
+        """Boîte de dialogue Oui/Non centrée sur la fenêtre principale."""
+        result = tk.BooleanVar(value=False)
+
+        dlg = tk.Toplevel(self)
+        dlg.title(title)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+
+        ttk.Label(dlg, text=message, justify=tk.CENTER, padding=20).pack()
+
+        btn_frame = ttk.Frame(dlg, padding=(0, 0, 0, 15))
+        btn_frame.pack()
+
+        def on_oui():
+            result.set(True)
+            dlg.destroy()
+
+        ttk.Button(btn_frame, text="Oui", width=10, command=on_oui).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="Non", width=10, command=dlg.destroy).pack(side=tk.LEFT, padx=10)
+
+        dlg.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - dlg.winfo_width()) // 2
+        y = self.winfo_y() + (self.winfo_height() - dlg.winfo_height()) // 2
+        dlg.geometry(f"+{x}+{y}")
+
+        self.wait_window(dlg)
+        return result.get()
+
+    def _confirm_lms_stopped(self) -> bool:
+        """Afficher l'alerte LMS et retourner True si l'utilisateur confirme."""
+        return self._ask_yes_no(
+            "⚠ LMS doit être arrêté",
+            "Avant tout transfert, Lyrion Media Server (LMS) doit être\n"
+            "arrêté sur la machine distante pour éviter la corruption\n"
+            "de la base de données.\n\n"
+            "Avez-vous bien arrêté LMS avant de continuer ?",
+        )
+
+    def _push_remote_db(self) -> None:
+        """Envoyer la BD locale vers l'hôte distant."""
+        if not self._confirm_lms_stopped():
+            return
+
+        cfg = Config.instance()
+        remote = cfg.remote
+
+        if not self._ask_yes_no(
+            "Confirmer l'envoi",
+            f"Écraser la base de données sur {remote.host} ?\n\n"
+            f"Source : {cfg.database.path}\n"
+            f"Destination : {remote.user}@{remote.host}:{remote.db_path}",
+        ):
+            return
+
+        self.push_btn.config(state=tk.DISABLED, text="⬆ Envoi…")
+        self.update_status(f"Envoi vers {remote.user}@{remote.host}…")
+        self.update()
+
+        try:
+            syncer = RemoteSync(remote)
+            success = syncer.upload(cfg.database.path)
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Envoi impossible : {e}")
+            self.push_btn.config(state=tk.NORMAL, text="⬆ Mettre à jour BD distante")
+            return
+
+        if not success:
+            messagebox.showerror(
+                "Échec",
+                f"Impossible d'envoyer la base de données vers {remote.host}.\n"
+                "Vérifiez que l'hôte est accessible et que la clé SSH est configurée.",
+            )
+        else:
+            messagebox.showinfo("Succès", f"Base de données envoyée vers {remote.host}.")
+            self._update_statusbar()
+
+        self.push_btn.config(state=tk.NORMAL, text="⬆ Mettre à jour BD distante")
+
+    def _fetch_remote_db(self) -> None:
+        """Récupérer persist.db depuis l'hôte distant puis recharger les données."""
+        if not self._confirm_lms_stopped():
+            return
+
+        cfg = Config.instance()
+        remote = cfg.remote
+
+        self.fetch_btn.config(state=tk.DISABLED, text="⬇ Récupération…")
+        self.update_status(f"Connexion à {remote.user}@{remote.host}…")
+        self.update()
+
+        try:
+            syncer = RemoteSync(remote)
+            success = syncer.fetch(cfg.database.path)
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Récupération distante impossible : {e}")
+            self.fetch_btn.config(state=tk.NORMAL, text="⬇ Récupérer BD distante")
+            return
+
+        if not success:
+            messagebox.showerror(
+                "Échec",
+                f"Impossible de récupérer la base de données depuis {remote.host}.\n"
+                "Vérifiez que l'hôte est accessible et que la clé SSH est configurée.",
+            )
+            self.fetch_btn.config(state=tk.NORMAL, text="⬇ Récupérer BD distante")
+            return
+
+        # Reconnecter et recharger
+        try:
+            if self.db_manager:
+                self.db_manager.close()
+                self.db_manager.connect()
+        except Exception as e:
+            messagebox.showerror("Erreur BD", f"Reconnexion impossible : {e}")
+            self.fetch_btn.config(state=tk.NORMAL, text="⬇ Récupérer BD distante")
+            return
+
+        self.all_tracks.clear()
+        self.filtered_tracks.clear()
+        self.selected_tracks.clear()
+        self._load_tracks_from_db()
+        self._update_statusbar()
+        self.fetch_btn.config(state=tk.NORMAL, text="⬇ Récupérer BD distante")
+        messagebox.showinfo("Succès", "Base de données récupérée et rechargée.")
+
     def _update_selection_label(self) -> None:
         """Mettre à jour le label du compteur de sélection."""
         total = len(self.filtered_tracks)

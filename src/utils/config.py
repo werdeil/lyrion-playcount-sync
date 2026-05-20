@@ -13,9 +13,10 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields as dc_fields
 import logging
 
+from src.utils.remote_sync import RemoteConfig  # noqa: F401 — réexporté
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +136,7 @@ class Config:
     
     def __init__(self):
         """Initialiser avec les valeurs par défaut."""
+        self.remote = RemoteConfig()
         self.database = DatabaseConfig()
         self.matching = MatchingConfig()
         self.sync = SyncConfig()
@@ -183,6 +185,11 @@ class Config:
                 return True
             
             # Charger chaque section
+            if 'remote' in data:
+                valid_keys = {f.name for f in dc_fields(RemoteConfig)}
+                remote_data = {k: v for k, v in data['remote'].items() if k in valid_keys}
+                self.remote = RemoteConfig(**remote_data)
+
             if 'database' in data:
                 self.database = DatabaseConfig(**data['database'])
             
@@ -343,6 +350,7 @@ class Config:
             Dict: Configuration complète
         """
         return {
+            'remote': asdict(self.remote),
             'database': asdict(self.database),
             'matching': asdict(self.matching),
             'sync': asdict(self.sync),
