@@ -9,7 +9,6 @@ Workflow en 3 étapes :
 
 import tkinter as tk
 from tkinter import ttk, messagebox
-from datetime import datetime
 from typing import Optional, Callable
 
 from src.utils.config import Config
@@ -60,6 +59,9 @@ class MainWindow(tk.Tk):
         # Mapping item suggestions → match dict
         self.suggestion_items: dict = {}
 
+        # Pistes ignorées (urlmd5)
+        self.ignored_tracks: set = set()
+
         self.title(self.TITLE)
         self.geometry(f"{self.WINDOW_WIDTH}x{self.WINDOW_HEIGHT}")
         self.minsize(950, 620)
@@ -89,6 +91,8 @@ class MainWindow(tk.Tk):
             foreground="#2ecc71",
         )
         style.configure("Status.TLabel", font=self.FONT_SMALL, foreground="#95a5a6")
+        style.configure("Action.TButton", font=("Segoe UI", 9), padding=(8, 4))
+        style.configure("Remote.TButton", font=("Segoe UI", 9), padding=(8, 4), foreground="#1a6fa8")
 
     # ─── Construction UI ─────────────────────────────────────────────────────
 
@@ -129,10 +133,16 @@ class MainWindow(tk.Tk):
         self._create_stat_card(col_frame, "Désynchronisés", f"{desynchronized:,}")
 
     def _create_stat_card(self, parent: ttk.Frame, title: str, value: str) -> None:
-        card = ttk.Frame(parent, relief=tk.SUNKEN, borderwidth=1)
+        card = tk.Frame(parent, bg="#2c3e50", relief=tk.FLAT)
         card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
-        ttk.Label(card, text=title, style="StatsTitle.TLabel").pack(pady=(5, 2))
-        ttk.Label(card, text=value, style="StatsNumber.TLabel").pack(pady=(0, 5))
+        tk.Label(
+            card, text=title,
+            font=("Segoe UI", 11, "bold"), bg="#2c3e50", fg="#3498db",
+        ).pack(pady=(8, 2))
+        tk.Label(
+            card, text=value,
+            font=("Segoe UI", 18, "bold"), bg="#2c3e50", fg="#2ecc71",
+        ).pack(pady=(0, 8))
 
     def _create_main_section(self, parent: ttk.Frame) -> None:
         """Panneau séparé horizontalement : pistes à gauche, suggestions à droite."""
@@ -189,10 +199,11 @@ class MainWindow(tk.Tk):
             parent, columns=columns, show="headings", selectmode="browse"
         )
 
-        widths = [60, 130, 200, 60]
-        for col, width in zip(columns, widths):
+        widths = [75, 130, 200, 60]
+        anchors = [tk.CENTER, tk.W, tk.W, tk.W]
+        for col, width, anchor in zip(columns, widths, anchors):
             self.suggestions_tree.heading(col, text=col)
-            self.suggestions_tree.column(col, width=width, anchor=tk.W)
+            self.suggestions_tree.column(col, width=width, anchor=anchor)
 
         vsb2 = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.suggestions_tree.yview)
         self.suggestions_tree.configure(yscroll=vsb2.set)
@@ -210,41 +221,63 @@ class MainWindow(tk.Tk):
         self.suggestions_tree.bind("<<TreeviewSelect>>", self._on_suggestion_selected)
 
     def _create_actions_section(self, parent: ttk.Frame) -> None:
+        ttk.Separator(parent, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=(0, 6))
+
         actions_frame = ttk.Frame(parent)
         actions_frame.pack(fill=tk.X, pady=(0, 8))
 
-        self.sync_btn = ttk.Button(
+        # Groupe 1 — action principale (tk.Button pour l'accent couleur)
+        self.sync_btn = tk.Button(
             actions_frame,
             text="Sync assignées (0)",
             command=self._sync_assigned_tracks,
             state=tk.DISABLED,
+            font=("Segoe UI", 10, "bold"),
+            bg="#95a5a6",
+            fg="white",
+            activebackground="#27ae60",
+            activeforeground="white",
+            relief=tk.RAISED,
+            padx=10,
+            pady=5,
+            cursor="arrow",
         )
-        self.sync_btn.pack(side=tk.LEFT, padx=(0, 4))
+        self.sync_btn.pack(side=tk.LEFT, padx=(0, 6))
 
+        ttk.Separator(actions_frame, orient=tk.VERTICAL).pack(
+            side=tk.LEFT, fill=tk.Y, padx=6
+        )
+
+        # Groupe 2 — actions secondaires (ttk natif, toujours lisible)
         ttk.Button(
-            actions_frame, text="Ignorer sélection", command=self._ignore_selected_track
+            actions_frame, text="Ignorer",
+            command=self._ignore_selected_track, style="Action.TButton"
         ).pack(side=tk.LEFT, padx=2)
         ttk.Button(
-            actions_frame, text="Recharger", command=self._reload_data
+            actions_frame, text="Recharger",
+            command=self._reload_data, style="Action.TButton"
         ).pack(side=tk.LEFT, padx=2)
         ttk.Button(
-            actions_frame, text="Config", command=self._on_config_click
+            actions_frame, text="Configuration",
+            command=self._on_config_click, style="Action.TButton"
         ).pack(side=tk.LEFT, padx=2)
 
+        # Groupe 3 — actions distantes (droite, texte bleu distinctif)
         cfg = Config.instance()
         if cfg.remote.is_configured():
             self.push_btn = ttk.Button(
-                actions_frame,
-                text="Mettre à jour BD distante",
-                command=self._push_remote_db,
+                actions_frame, text="↑ Envoyer",
+                command=self._push_remote_db, style="Remote.TButton"
             )
-            self.push_btn.pack(side=tk.RIGHT, padx=2)
+            self.push_btn.pack(side=tk.RIGHT, padx=(2, 0))
             self.fetch_btn = ttk.Button(
-                actions_frame,
-                text="Récupérer BD distante",
-                command=self._fetch_remote_db,
+                actions_frame, text="↓ Récupérer",
+                command=self._fetch_remote_db, style="Remote.TButton"
             )
             self.fetch_btn.pack(side=tk.RIGHT, padx=2)
+            ttk.Separator(actions_frame, orient=tk.VERTICAL).pack(
+                side=tk.RIGHT, fill=tk.Y, padx=6
+            )
 
     def _create_statusbar(self) -> None:
         statusbar = ttk.Frame(self, relief=tk.SUNKEN, borderwidth=1)
@@ -256,10 +289,36 @@ class MainWindow(tk.Tk):
         self.status_label = ttk.Label(statusbar, text="", style="Status.TLabel")
         self.status_label.pack(side=tk.LEFT, padx=20, pady=2)
 
-        self.clock_label = ttk.Label(statusbar, text="", style="Status.TLabel")
-        self.clock_label.pack(side=tk.RIGHT, padx=5, pady=2)
+        self.counter_label = ttk.Label(statusbar, text="", style="Status.TLabel")
+        self.counter_label.pack(side=tk.RIGHT, padx=10, pady=2)
 
-        self._update_clock()
+        self.progress_bar = ttk.Progressbar(statusbar, mode="indeterminate", length=120)
+        # Non empaqueté par défaut — affiché à la demande
+
+
+    # ─── Barre de progression ─────────────────────────────────────────────────
+
+    def _show_progressbar(self, mode: str = "indeterminate", maximum: int = 100) -> None:
+        self.progress_bar.config(mode=mode, maximum=maximum, value=0)
+        self.progress_bar.pack(side=tk.RIGHT, padx=(0, 8), pady=2)
+        if mode == "indeterminate":
+            self.progress_bar.start(10)
+
+    def _hide_progressbar(self) -> None:
+        self.progress_bar.stop()
+        self.progress_bar.pack_forget()
+
+    def _update_progress_counter(self) -> None:
+        total = len(self.missing_tracks)
+        assigned = len(self.pending_assignments)
+        ignored = sum(1 for uid in self.ignored_tracks if uid in self.missing_tracks)
+        remaining = total - assigned - ignored
+        if total == 0:
+            self.counter_label.config(text="")
+        else:
+            self.counter_label.config(
+                text=f"{remaining} restante(s)  ·  {assigned} assignée(s)  ·  {ignored} ignorée(s)"
+            )
 
     # ─── Chargement données ───────────────────────────────────────────────────
 
@@ -275,7 +334,9 @@ class MainWindow(tk.Tk):
             self.urlmd5_to_item.clear()
             self.pending_assignments.clear()
             self.suggestion_items.clear()
+            self.ignored_tracks.clear()
 
+            self._show_progressbar()
             loading_id = self.tracks_tree.insert("", tk.END, values=("Chargement…", "", "", ""))
             self.update()
 
@@ -283,6 +344,7 @@ class MainWindow(tk.Tk):
             self.alternative_tracks = SyncDetector.get_all_alternative_tracks(self.db_manager)
 
             self.tracks_tree.delete(loading_id)
+            self._hide_progressbar()
 
             seen: set = set()
             for track in missing:
@@ -304,10 +366,12 @@ class MainWindow(tk.Tk):
 
             self._update_sync_button()
             self._update_statusbar()
+            self._update_progress_counter()
             count = len(self.missing_tracks)
             self.update_status(f"{count} piste(s) désynchronisée(s) chargée(s)")
 
         except Exception as e:
+            self._hide_progressbar()
             messagebox.showerror("Erreur chargement", f"Impossible de charger les pistes : {e}")
 
     def _reload_data(self) -> None:
@@ -374,10 +438,13 @@ class MainWindow(tk.Tk):
             if is_current:
                 tags.append("current")
 
+            indicator = "●" if score >= 80 else "◐" if score >= 60 else "○"
+            score_text = f"{indicator} {score:.0f}%"
+
             item_id = self.suggestions_tree.insert(
                 "",
                 tk.END,
-                values=(f"{score:.0f}%", alt_artist, alt_title, alt_playcount),
+                values=(score_text, alt_artist, alt_title, alt_playcount),
                 tags=tuple(tags),
             )
             self.suggestion_items[item_id] = match
@@ -405,6 +472,7 @@ class MainWindow(tk.Tk):
     def _assign_track(self, persist_urlmd5: str, alt_match: dict) -> None:
         """Mémorise le choix sans écrire en DB."""
         self.pending_assignments[persist_urlmd5] = alt_match
+        self.ignored_tracks.discard(persist_urlmd5)
 
         item_id = self.urlmd5_to_item.get(persist_urlmd5)
         if item_id:
@@ -413,6 +481,7 @@ class MainWindow(tk.Tk):
             self.tracks_tree.item(item_id, values=values, tags=("assigned",))
 
         self._update_sync_button()
+        self._update_progress_counter()
         alt_title = alt_match.get("title") or ""
         score = alt_match.get("match_score", 0)
         self.update_status(f"Assigné : {alt_title} ({score:.0f}%)")
@@ -425,13 +494,26 @@ class MainWindow(tk.Tk):
             values[3] = "—"
             self.tracks_tree.item(item_id, values=values, tags=())
         self._update_sync_button()
+        self._update_progress_counter()
 
     def _update_sync_button(self) -> None:
         count = len(self.pending_assignments)
-        self.sync_btn.config(
-            text=f"Sync assignées ({count})",
-            state=tk.NORMAL if count > 0 else tk.DISABLED,
-        )
+        if count > 0:
+            self.sync_btn.config(
+                text=f"Sync assignées ({count})",
+                state=tk.NORMAL,
+                bg="#27ae60",
+                fg="white",
+                cursor="hand2",
+            )
+        else:
+            self.sync_btn.config(
+                text="Sync assignées (0)",
+                state=tk.DISABLED,
+                bg="#95a5a6",
+                fg="white",
+                cursor="arrow",
+            )
 
     # ─── Étape 3 : synchronisation ────────────────────────────────────────────
 
@@ -454,6 +536,8 @@ class MainWindow(tk.Tk):
         errors = []
         items_to_remove = []
 
+        self._show_progressbar(mode="determinate", maximum=count)
+
         for persist_urlmd5, alt_match in list(self.pending_assignments.items()):
             track_data = self.missing_tracks.get(persist_urlmd5, {})
             persist_playcount = track_data.get("playcount", 0)
@@ -462,6 +546,8 @@ class MainWindow(tk.Tk):
 
             if not alt_urlmd5:
                 errors.append(f"{persist_urlmd5[:8]}… : urlmd5 alt manquant")
+                self.progress_bar["value"] += 1
+                self.update()
                 continue
 
             try:
@@ -479,6 +565,11 @@ class MainWindow(tk.Tk):
             except Exception as e:
                 errors.append(f"{persist_urlmd5[:8]}… : {e}")
 
+            self.progress_bar["value"] += 1
+            self.update()
+
+        self._hide_progressbar()
+
         for urlmd5 in items_to_remove:
             item_id = self.urlmd5_to_item.pop(urlmd5, None)
             if item_id:
@@ -493,6 +584,7 @@ class MainWindow(tk.Tk):
             text="Cliquer sur une piste pour voir les suggestions"
         )
         self._update_sync_button()
+        self._update_progress_counter()
 
         if errors:
             messagebox.showwarning(
@@ -520,10 +612,13 @@ class MainWindow(tk.Tk):
         values[3] = "Ignorée"
         self.tracks_tree.item(item_id, values=values, tags=("ignored",))
 
-        if urlmd5 and urlmd5 in self.pending_assignments:
-            del self.pending_assignments[urlmd5]
-            self._update_sync_button()
+        if urlmd5:
+            self.ignored_tracks.add(urlmd5)
+            if urlmd5 in self.pending_assignments:
+                del self.pending_assignments[urlmd5]
+                self._update_sync_button()
 
+        self._update_progress_counter()
         self.suggestions_tree.delete(*self.suggestions_tree.get_children())
         self.suggestion_items.clear()
         self.track_info_label.config(
@@ -711,14 +806,14 @@ class MainWindow(tk.Tk):
             success = RemoteSync(remote).upload(cfg.database.path)
         except Exception as e:
             messagebox.showerror("Erreur", f"Envoi impossible : {e}")
-            self.push_btn.config(state=tk.NORMAL, text="Mettre à jour BD distante")
+            self.push_btn.config(state=tk.NORMAL, text="↑ Envoyer")
             return
         if not success:
             messagebox.showerror("Échec", f"Impossible d'envoyer vers {remote.host}.")
         else:
             messagebox.showinfo("Succès", f"Base de données envoyée vers {remote.host}.")
             self._update_statusbar()
-        self.push_btn.config(state=tk.NORMAL, text="Mettre à jour BD distante")
+        self.push_btn.config(state=tk.NORMAL, text="↑ Envoyer")
 
     def _fetch_remote_db(self) -> None:
         if not self._confirm_lms_stopped():
@@ -732,11 +827,11 @@ class MainWindow(tk.Tk):
             success = RemoteSync(remote).fetch(cfg.database.path)
         except Exception as e:
             messagebox.showerror("Erreur", f"Récupération impossible : {e}")
-            self.fetch_btn.config(state=tk.NORMAL, text="Récupérer BD distante")
+            self.fetch_btn.config(state=tk.NORMAL, text="↓ Récupérer")
             return
         if not success:
             messagebox.showerror("Échec", f"Impossible de récupérer depuis {remote.host}.")
-            self.fetch_btn.config(state=tk.NORMAL, text="Récupérer BD distante")
+            self.fetch_btn.config(state=tk.NORMAL, text="↓ Récupérer")
             return
         try:
             if self.db_manager:
@@ -744,11 +839,11 @@ class MainWindow(tk.Tk):
                 self.db_manager.connect()
         except Exception as e:
             messagebox.showerror("Erreur BD", f"Reconnexion impossible : {e}")
-            self.fetch_btn.config(state=tk.NORMAL, text="Récupérer BD distante")
+            self.fetch_btn.config(state=tk.NORMAL, text="↓ Récupérer")
             return
         self._load_tracks_from_db()
         self._update_statusbar()
-        self.fetch_btn.config(state=tk.NORMAL, text="Récupérer BD distante")
+        self.fetch_btn.config(state=tk.NORMAL, text="↓ Récupérer")
         messagebox.showinfo("Succès", "Base de données récupérée et rechargée.")
 
     # ─── Barre de statut ──────────────────────────────────────────────────────
@@ -759,9 +854,6 @@ class MainWindow(tk.Tk):
         else:
             self.db_label.config(text="Pas de connexion DB")
 
-    def _update_clock(self) -> None:
-        self.clock_label.config(text=datetime.now().strftime("%H:%M:%S"))
-        self.after(1000, self._update_clock)
 
     # ─── API publique ─────────────────────────────────────────────────────────
 
