@@ -259,6 +259,7 @@ class Config:
         
         try:
             config_dict = {
+                'remote': asdict(self.remote),
                 'database': asdict(self.database),
                 'matching': asdict(self.matching),
                 'sync': asdict(self.sync),

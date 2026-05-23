@@ -7,6 +7,9 @@ Workflow en 3 étapes :
   3. Choix d'une suggestion → assignation en mémoire → bouton Sync
 """
 
+import os
+import sqlite3
+import tempfile
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, Callable
@@ -703,6 +706,7 @@ class MainWindow(tk.Tk):
         dbpath_var = tk.StringVar(value=remote.db_path)
         port_var = tk.StringVar(value=str(remote.ssh_port))
         timeout_var = tk.StringVar(value=str(remote.timeout))
+        sudo_var = tk.BooleanVar(value=remote.use_sudo)
 
         for i, (label, var) in enumerate([
             ("Hôte :", host_var),
@@ -715,6 +719,13 @@ class MainWindow(tk.Tk):
             ttk.Entry(tab_remote, textvariable=var, width=35).grid(
                 row=i, column=1, sticky=tk.EW, padx=(10, 0), pady=3
             )
+
+        ttk.Checkbutton(
+            tab_remote,
+            text="Utiliser sudo pour l'envoi (si l'utilisateur SSH n'a pas les droits sur db_path)",
+            variable=sudo_var,
+        ).grid(row=5, column=0, columnspan=2, sticky=tk.W, pady=(10, 0))
+
         tab_remote.columnconfigure(1, weight=1)
 
         btn_frame = ttk.Frame(win, padding=(10, 0, 10, 10))
@@ -725,6 +736,7 @@ class MainWindow(tk.Tk):
             cfg.remote.host = host_var.get().strip()
             cfg.remote.user = user_var.get().strip()
             cfg.remote.db_path = dbpath_var.get().strip()
+            cfg.remote.use_sudo = sudo_var.get()
             try:
                 cfg.remote.ssh_port = int(port_var.get())
             except ValueError:
@@ -802,12 +814,24 @@ class MainWindow(tk.Tk):
         self.push_btn.config(state=tk.DISABLED, text="Envoi…")
         self.update_status(f"Envoi vers {remote.user}@{remote.host}…")
         self.update()
+
+        # Exporter une copie consolidée (WAL fusionné) avant le transfert SCP.
+        # Envoyer le .db brut laisserait les données du fichier -wal derrière.
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".db")
+        os.close(tmp_fd)
         try:
-            success = RemoteSync(remote).upload(cfg.database.path)
+            self.db_manager.export_consolidated(tmp_path)
+            success = RemoteSync(remote).upload(tmp_path)
         except Exception as e:
             messagebox.showerror("Erreur", f"Envoi impossible : {e}")
             self.push_btn.config(state=tk.NORMAL, text="↑ Envoyer")
             return
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
         if not success:
             messagebox.showerror("Échec", f"Impossible d'envoyer vers {remote.host}.")
         else:

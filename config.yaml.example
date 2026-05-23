@@ -12,6 +12,10 @@ remote:
   ssh_port: 22
   # Délai d'attente en secondes
   timeout: 30
+  # Utiliser sudo pour déplacer le fichier à destination (si l'utilisateur SSH
+  # n'a pas les droits d'écriture directe sur db_path).
+  # Nécessite que l'utilisateur SSH ait sudo NOPASSWD pour mv et chown.
+  use_sudo: false
 
 # ===== Configuration Base de Données =====
 database:
