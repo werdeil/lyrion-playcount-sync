@@ -15,7 +15,7 @@ from tkinter import ttk, messagebox
 from typing import Optional, Callable
 
 from src.utils.config import Config
-from src.utils.remote_sync import RemoteSync
+from src.utils.remote_sync import RemoteSync, RemoteBusyError
 from src.database.queries import SyncDetector
 
 
@@ -790,6 +790,62 @@ class MainWindow(tk.Tk):
         self.wait_window(dlg)
         return result.get()
 
+    def _ask_sudo_password(self, host: str, user: str) -> Optional[str]:
+        """
+        Demande le mot de passe sudo de l'utilisateur SSH distant.
+
+        Le mot de passe n'est jamais écrit dans config.yaml ni dans les logs.
+        S'il est mémorisé, il ne l'est qu'en mémoire pour la durée de la session.
+
+        Returns:
+            Le mot de passe, ou None si l'utilisateur annule.
+        """
+        cached = getattr(self, "_sudo_pw_cache", None)
+        if cached:
+            return cached
+
+        result: dict[str, Optional[str]] = {"pw": None}
+        dlg = tk.Toplevel(self)
+        dlg.title("Mot de passe sudo")
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        frame = ttk.Frame(dlg, padding=20)
+        frame.pack(fill=tk.BOTH, expand=True)
+        ttk.Label(
+            frame,
+            text=f"Mot de passe sudo pour {user}@{host} :",
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W)
+        pw_var = tk.StringVar()
+        entry = ttk.Entry(frame, textvariable=pw_var, show="•", width=32)
+        entry.pack(fill=tk.X, pady=(8, 6))
+        entry.focus_set()
+        remember_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            frame, text="Retenir pour cette session", variable=remember_var
+        ).pack(anchor=tk.W)
+
+        def on_ok(_event=None):
+            result["pw"] = pw_var.get()
+            if remember_var.get():
+                self._sudo_pw_cache = pw_var.get()
+            dlg.destroy()
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill=tk.X, pady=(12, 0))
+        ttk.Button(btns, text="OK", width=10, command=on_ok).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btns, text="Annuler", width=10, command=dlg.destroy).pack(
+            side=tk.LEFT, padx=5
+        )
+        entry.bind("<Return>", on_ok)
+
+        dlg.update_idletasks()
+        x = self.winfo_x() + (self.winfo_width() - dlg.winfo_width()) // 2
+        y = self.winfo_y() + (self.winfo_height() - dlg.winfo_height()) // 2
+        dlg.geometry(f"+{x}+{y}")
+        self.wait_window(dlg)
+        return result["pw"]
+
     def _confirm_lms_stopped(self) -> bool:
         return self._ask_yes_no(
             "LMS doit être arrêté",
@@ -811,6 +867,15 @@ class MainWindow(tk.Tk):
             f"Destination : {remote.user}@{remote.host}:{remote.db_path}",
         ):
             return
+
+        # En mode sudo, l'utilisateur SSH n'a pas les droits d'écriture directs
+        # sur db_path : on demande son mot de passe sudo (jamais persisté).
+        sudo_pw: Optional[str] = None
+        if remote.use_sudo:
+            sudo_pw = self._ask_sudo_password(remote.host, remote.user)
+            if sudo_pw is None:
+                return
+
         self.push_btn.config(state=tk.DISABLED, text="Envoi…")
         self.update_status(f"Envoi vers {remote.user}@{remote.host}…")
         self.update()
@@ -821,7 +886,7 @@ class MainWindow(tk.Tk):
         os.close(tmp_fd)
         try:
             self.db_manager.export_consolidated(tmp_path)
-            success = RemoteSync(remote).upload(tmp_path)
+            success = RemoteSync(remote).upload(tmp_path, sudo_password=sudo_pw)
         except Exception as e:
             messagebox.showerror("Erreur", f"Envoi impossible : {e}")
             self.push_btn.config(state=tk.NORMAL, text="↑ Envoyer")
@@ -833,7 +898,14 @@ class MainWindow(tk.Tk):
                 pass
 
         if not success:
-            messagebox.showerror("Échec", f"Impossible d'envoyer vers {remote.host}.")
+            # Purge un éventuel mot de passe mémorisé : il peut être la cause
+            # de l'échec (mot de passe sudo erroné) → reprompt au prochain essai.
+            self._sudo_pw_cache = None
+            messagebox.showerror(
+                "Échec",
+                f"Impossible d'envoyer vers {remote.host}.\n"
+                "Voir logs/sync.log pour le détail de l'erreur.",
+            )
         else:
             messagebox.showinfo("Succès", f"Base de données envoyée vers {remote.host}.")
             self._update_statusbar()
@@ -849,6 +921,10 @@ class MainWindow(tk.Tk):
         self.update()
         try:
             success = RemoteSync(remote).fetch(cfg.database.path)
+        except RemoteBusyError as e:
+            messagebox.showwarning("Base distante occupée", str(e))
+            self.fetch_btn.config(state=tk.NORMAL, text="↓ Récupérer")
+            return
         except Exception as e:
             messagebox.showerror("Erreur", f"Récupération impossible : {e}")
             self.fetch_btn.config(state=tk.NORMAL, text="↓ Récupérer")
