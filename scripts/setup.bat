@@ -46,5 +46,5 @@ echo Installation terminee!
 echo.
 echo Prochaines etapes:
 echo 1. Configurer config.yaml avec vos chemins Lyrion
-echo 2. Lancer l'application: python -m src.main
+echo 2. Lancer l'application: python3 scripts/run.py
 echo.

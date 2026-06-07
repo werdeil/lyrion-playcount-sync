@@ -82,7 +82,18 @@ def check_installation() -> bool:
         else:
             print(f"  ❌ {file_name} (manquant)")
             all_ok = False
-    
+
+    # Outils pour la synchronisation distante (section 'remote' de config.yaml).
+    # Optionnels : leur absence n'invalide pas l'installation, elle désactive
+    # seulement la récupération/dépose de persist.db via SCP.
+    import shutil
+    print("\nSynchronisation distante (SCP, optionnel):")
+    for tool in ('ssh', 'scp'):
+        if shutil.which(tool):
+            print(f"  ✅ {tool}")
+        else:
+            print(f"  ⚠️  {tool} introuvable — sync distante indisponible (config 'remote')")
+
     if all_ok:
         print("\n✅ Installation vérifiée!")
     else:
