@@ -2,8 +2,7 @@
 
 import unicodedata
 import re
-from typing import List, Tuple, Optional, Dict, Any
-from functools import lru_cache
+from typing import List, Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rapidfuzz import fuzz
 
@@ -337,36 +336,6 @@ class TrackMatcher:
         return matches[:top_n]
     
     @staticmethod
-    def is_likely_match(score: float) -> bool:
-        """
-        Vérifie si c'est une correspondance probable.
-        
-        score >= 80 : très probable
-        score >= 60 : possible
-        score < 60 : peu probable
-        
-        Args:
-            score: Score de correspondance (0-100)
-            
-        Returns:
-            True si score >= 80
-        """
-        return score >= TrackMatcher.LIKELY_MATCH_THRESHOLD
-    
-    @staticmethod
-    def is_possible_match(score: float) -> bool:
-        """
-        Vérifie si c'est une correspondance possible.
-        
-        Args:
-            score: Score de correspondance (0-100)
-            
-        Returns:
-            True si score >= 60
-        """
-        return score >= TrackMatcher.POSSIBLE_MATCH_THRESHOLD
-    
-    @staticmethod
     def _get_match_quality(score: float) -> str:
         """
         Classe la qualité du matching.
@@ -383,8 +352,3 @@ class TrackMatcher:
             return 'POSSIBLE'
         else:
             return 'UNLIKELY'
-    
-    def clear_cache(self):
-        """Vide le cache des strings normalisées."""
-        self._normalize_cache.clear()
-        logger.debug("Cache normalisé vidé")

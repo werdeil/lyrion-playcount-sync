@@ -51,19 +51,6 @@ class TestMatchQuality:
     def test_get_match_quality(self, score, expected):
         assert TrackMatcher._get_match_quality(score) == expected
 
-    def test_is_likely_above_threshold(self):
-        assert TrackMatcher.is_likely_match(80.0) is True
-        assert TrackMatcher.is_likely_match(100.0) is True
-
-    def test_is_likely_below_threshold(self):
-        assert TrackMatcher.is_likely_match(79.9) is False
-
-    def test_is_possible_above_threshold(self):
-        assert TrackMatcher.is_possible_match(60.0) is True
-
-    def test_is_possible_below_threshold(self):
-        assert TrackMatcher.is_possible_match(59.9) is False
-
 
 # ── Calcul du score ───────────────────────────────────────────────────────────
 
@@ -195,12 +182,6 @@ class TestCache:
         m._get_normalized("The Beatles")
         m._get_normalized("Queen")
         assert len(m._normalize_cache) == 2
-
-    def test_clear_cache_empties_it(self):
-        m = TrackMatcher(use_cache=True)
-        m._get_normalized("The Beatles")
-        m.clear_cache()
-        assert len(m._normalize_cache) == 0
 
     def test_no_cache_mode_does_not_store(self):
         m = TrackMatcher(use_cache=False)

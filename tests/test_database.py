@@ -7,7 +7,7 @@ Ils sont automatiquement sautés si aucune BD n'est détectée.
 import pytest
 from pathlib import Path
 
-from src.database import DatabaseManager, DatabaseConnectionError, PlaycountQueries
+from src.database import DatabaseManager, DatabaseConnectionError
 
 
 @pytest.fixture(scope="module")
@@ -69,20 +69,6 @@ class TestCursorContextManager:
             )
             rows = cursor.fetchall()
         assert isinstance(rows, list)
-
-
-class TestPlaycountStats:
-
-    def test_get_urlmd5_stats_returns_both_tables(self, db_manager):
-        stats = PlaycountQueries.get_urlmd5_stats(db_manager)
-        assert "tracks_persistent" in stats
-        assert "alternativeplaycount" in stats
-
-    def test_stats_have_expected_keys(self, db_manager):
-        stats = PlaycountQueries.get_urlmd5_stats(db_manager)
-        for table_stats in stats.values():
-            assert "total" in table_stats
-            assert "with_plays" in table_stats
 
 
 class TestBackup:

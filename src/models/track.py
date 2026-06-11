@@ -11,7 +11,6 @@ from dataclasses import dataclass, asdict, field
 from datetime import datetime, timezone
 from typing import Optional
 import uuid
-import json
 
 
 @dataclass
@@ -105,18 +104,7 @@ class Track:
             dict: Représentation dictionnaire du Track
         """
         return asdict(self)
-    
-    def to_json(self) -> str:
-        """
-        Convertit le Track en JSON string.
-        
-        Returns:
-            str: Représentation JSON du Track
-        """
-        data = self.to_dict()
-        # Convertir les None en null JSON
-        return json.dumps(data, ensure_ascii=False, indent=2)
-    
+
     def __str__(self) -> str:
         """Représentation string du Track."""
         return f"Track({self.display_name()} | {self.playcount} plays | {self.source})"
@@ -171,39 +159,7 @@ class MatchSuggestion:
             return (best_track, best_score)
         
         return None
-    
-    def add_match(self, track: Track, score: float) -> None:
-        """
-        Ajoute une correspondance et maintient l'ordre par score.
-        
-        Args:
-            track: Track à ajouter
-            score: Score de correspondance (0-100)
-        """
-        if not 0 <= score <= 100:
-            raise ValueError(f"Score invalide: {score}")
-        
-        self.suggested_matches.append((track, score))
-        # Trier par score décroissant
-        self.suggested_matches.sort(key=lambda x: x[1], reverse=True)
-        
-        # Recalculer auto_match_possible
-        if self.suggested_matches:
-            best_score = self.suggested_matches[0][1]
-            self.auto_match_possible = best_score > 90
-    
-    def get_top_n(self, n: int) -> list[tuple[Track, float]]:
-        """
-        Retourne les top N correspondances.
-        
-        Args:
-            n: Nombre de correspondances à retourner
-        
-        Returns:
-            list[tuple[Track, float]]: Top N matches
-        """
-        return self.suggested_matches[:n]
-    
+
     def __str__(self) -> str:
         """Représentation string."""
         best = self.get_best_match()
@@ -327,16 +283,7 @@ class SyncOperation:
             'new_playcount': self.new_playcount,
             'timestamp': self.timestamp.isoformat(),
         }
-    
-    def to_json(self) -> str:
-        """
-        Convertit l'opération en JSON string.
-        
-        Returns:
-            str: Représentation JSON
-        """
-        return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
-    
+
     def __str__(self) -> str:
         """Représentation string."""
         return (f"SyncOperation({self.action}: "

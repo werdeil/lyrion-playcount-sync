@@ -959,11 +959,3 @@ class MainWindow(tk.Tk):
 
     def update_status(self, message: str) -> None:
         self.status_label.config(text=message)
-
-    def show_message(self, title: str, message: str, message_type: str = "info") -> None:
-        if message_type == "warning":
-            messagebox.showwarning(title, message)
-        elif message_type == "error":
-            messagebox.showerror(title, message)
-        else:
-            messagebox.showinfo(title, message)

@@ -21,9 +21,8 @@ from src.ui.main_window import MainWindow
 from src.database.connection import DatabaseManager
 from src.database.queries import SyncDetector
 from src.matching.fuzzy_matcher import TrackMatcher
-from src.utils.logger import setup_logger, get_logger
+from src.utils.logger import setup_logger
 from src.utils.config import Config
-from src.utils.remote_sync import RemoteSync
 
 
 # Configuration par défaut
@@ -134,29 +133,6 @@ class Application:
             self.logger.error(f"Erreur chargement configuration: {e}")
             return False
     
-    def fetch_remote_database(self) -> bool:
-        """
-        Étape 3a: Récupérer la base de données depuis l'hôte distant si configuré.
-
-        Returns:
-            bool: True si succès (ou si désactivé)
-        """
-        remote_cfg = self.config.remote
-        if not remote_cfg.enabled:
-            return True
-
-        self.logger.info(
-            f"Récupération BD depuis {remote_cfg.user}@{remote_cfg.host}:{remote_cfg.db_path}"
-        )
-        syncer = RemoteSync(remote_cfg)
-        success = syncer.fetch(self.config.database.path)
-        if not success:
-            self.logger.error(
-                "Impossible de récupérer la base de données distante. "
-                "Vérifiez la connexion SSH et la configuration remote.*"
-            )
-        return success
-
     def connect_database(self) -> bool:
         """
         Étape 3: Établir la connexion à la base de données.

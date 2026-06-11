@@ -71,12 +71,6 @@ class TestTrack:
         assert d["urlmd5"] == "abc123"
         assert d["playcount"] == 10
 
-    def test_to_json_is_valid_string(self):
-        t = Track("abc123", "Song", "Artist", None, None, 5)
-        import json
-        data = json.loads(t.to_json())
-        assert data["urlmd5"] == "abc123"
-
     def test_zero_playcount_is_valid(self):
         t = Track("md5", "Title", None, None, None, 0)
         assert t.playcount == 0
@@ -100,24 +94,14 @@ class TestMatchSuggestion:
         assert s.auto_match_possible is False
         assert s.get_best_match() is None
 
-    def test_add_match_sorts_by_score_descending(self):
-        missing = Track("missing", "Song", "Artist", None, None, 0)
-        s = MatchSuggestion(missing)
-        s.add_match(self._make_track("alt_low"), 60.0)
-        s.add_match(self._make_track("alt_high"), 95.0)
-        best = s.suggested_matches[0]
-        assert best[1] == 95.0
-
     def test_auto_match_flag_set_above_90(self):
         missing = Track("missing", "Song", "Artist", None, None, 0)
-        s = MatchSuggestion(missing)
-        s.add_match(self._make_track("alt"), 91.0)
+        s = MatchSuggestion(missing, [(self._make_track("alt"), 91.0)])
         assert s.auto_match_possible is True
 
     def test_auto_match_flag_not_set_at_90(self):
         missing = Track("missing", "Song", "Artist", None, None, 0)
-        s = MatchSuggestion(missing)
-        s.add_match(self._make_track("alt"), 90.0)
+        s = MatchSuggestion(missing, [(self._make_track("alt"), 90.0)])
         assert s.auto_match_possible is False
 
     def test_get_best_match_above_threshold(self):
@@ -133,13 +117,6 @@ class TestMatchSuggestion:
         alt = self._make_track("alt")
         s = MatchSuggestion(missing, [(alt, 55.0)])
         assert s.get_best_match() is None
-
-    def test_get_top_n(self):
-        missing = Track("missing", "Song", "Artist", None, None, 0)
-        s = MatchSuggestion(missing)
-        for i in range(5):
-            s.add_match(self._make_track(f"alt_{i}"), float(50 + i * 10))
-        assert len(s.get_top_n(3)) == 3
 
     def test_rejects_invalid_score(self):
         missing = Track("missing", "Song", "Artist", None, None, 0)
@@ -200,9 +177,3 @@ class TestSyncOperation:
         d = op.to_dict()
         assert d["action"] == "COPY"
         assert d["new_playcount"] == 50
-
-    def test_to_json_valid(self):
-        import json
-        op = SyncOperation("missing_1", "alt_1", "MERGE", new_playcount=75)
-        data = json.loads(op.to_json())
-        assert data["action"] == "MERGE"

@@ -2,7 +2,7 @@
 
 import sqlite3
 from pathlib import Path
-from typing import Optional, Dict, Tuple
+from typing import Optional
 from contextlib import contextmanager
 from datetime import datetime
 
@@ -300,73 +300,6 @@ class DatabaseManager:
             
         except sqlite3.Error as e:
             raise DatabaseConnectionError(f"Erreur de vérification : {e}")
-    
-    def get_table_stats(self) -> Dict[str, Dict[str, any]]:
-        """
-        Récupère les statistiques des tables Lyrion.
-        
-        Returns:
-            Dictionnaire avec stats par table
-            
-        Raises:
-            DatabaseConnectionError: Si l'opération échoue
-        """
-        if not self.connection:
-            raise DatabaseConnectionError("Pas de connexion établie")
-        
-        try:
-            cursor = self.connection.cursor()
-            stats = {}
-            
-            for table_name in self.REQUIRED_TABLES.keys():
-                # Nombre de lignes
-                cursor.execute(f"SELECT COUNT(*) as count FROM {table_name}")
-                row_count = cursor.fetchone()['count']
-                
-                # Taille en bytes
-                cursor.execute(f"SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size() WHERE 1=1")
-                db_size = cursor.fetchone()['size'] if cursor.fetchone() else 0
-                
-                stats[table_name] = {
-                    'rows': row_count,
-                    'db_size_bytes': db_size
-                }
-                
-                # Stat spécifique pour tracks_persistent
-                if table_name == 'tracks_persistent':
-                    cursor.execute(
-                        f"SELECT COUNT(*) as count FROM {table_name} WHERE playcount > 0"
-                    )
-                    with_plays = cursor.fetchone()['count']
-                    stats[table_name]['with_plays'] = with_plays
-                
-                # Stat spécifique pour alternativeplaycount
-                if table_name == 'alternativeplaycount':
-                    cursor.execute(
-                        f"SELECT DISTINCT source FROM {table_name}"
-                    )
-                    sources = [row[0] for row in cursor.fetchall()]
-                    stats[table_name]['sources'] = sources
-            
-            logger.debug(f"Stats récupérées : {stats}")
-            return stats
-            
-        except sqlite3.Error as e:
-            raise DatabaseConnectionError(f"Erreur lors de la lecture des stats : {e}")
-    
-    def get_connection(self) -> sqlite3.Connection:
-        """
-        Récupère la connexion SQLite.
-        
-        Returns:
-            Connexion SQLite
-            
-        Raises:
-            DatabaseConnectionError: Si pas de connexion
-        """
-        if not self.connection:
-            raise DatabaseConnectionError("Pas de connexion établie. Appelez connect() d'abord.")
-        return self.connection
     
     @contextmanager
     def cursor(self, commit: bool = True):

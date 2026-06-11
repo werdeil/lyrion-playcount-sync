@@ -12,7 +12,7 @@ from src.utils.config import (
     Config, DatabaseConfig, MatchingConfig, SyncConfig, 
     UIConfig, LoggingConfig
 )
-from src.utils.logger import setup_logger, get_logger, LEVEL_NAMES
+from src.utils.logger import setup_logger, LEVEL_NAMES
 
 
 class TestLogger:
@@ -45,14 +45,6 @@ class TestLogger:
             assert log_file.exists()
             content = log_file.read_text()
             assert "Test file message" in content
-    
-    def test_get_logger(self):
-        """Test récupération d'un logger existant."""
-        setup_logger('mylogger', logging.INFO)
-        logger = get_logger('mylogger')
-        
-        assert logger is not None
-        assert logger.name == 'mylogger'
     
     def test_level_names(self):
         """Test que les constantes de niveau sont correctes."""

@@ -88,20 +88,5 @@ def setup_logger(
     
     # Cacher le logger
     _loggers[name] = logger
-    
+
     return logger
-
-
-def get_logger(name: str) -> logging.Logger:
-    """
-    Récupère un logger existant ou crée un nouveau.
-    
-    Args:
-        name: Nom du logger
-        
-    Returns:
-        Logger
-    """
-    if name in _loggers:
-        return _loggers[name]
-    return setup_logger(name)

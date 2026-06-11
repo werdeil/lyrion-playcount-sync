@@ -415,30 +415,3 @@ class MatchDialog(tk.Toplevel):
         if self.on_next:
             self.on_next()
         self.destroy()
-
-
-def show_match_dialog(
-    parent: tk.Widget,
-    missing_track: Track,
-    suggested_matches: List[tuple[Track, float]],
-    on_apply: Optional[Callable[[SyncOperation], bool]] = None,
-    on_next: Optional[Callable] = None,
-) -> None:
-    """
-    Afficher le dialogue de match.
-    
-    Args:
-        parent: Widget parent
-        missing_track: Morceau manquant
-        suggested_matches: Liste de (Track, score)
-        on_apply: Callback lors de l'application
-        on_next: Callback pour passer au suivant
-    """
-    dialog = MatchDialog(
-        parent,
-        missing_track,
-        suggested_matches,
-        on_apply=on_apply,
-        on_next=on_next
-    )
-    dialog.wait_window()
