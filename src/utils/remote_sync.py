@@ -40,7 +40,7 @@ class RemoteSync:
     def __init__(self, config: RemoteConfig):
         self.config = config
 
-    def fetch(self, local_path: str) -> bool:
+    def fetch(self, local_path: str, sudo_password: str | None = None) -> bool:
         """
         Télécharge le fichier distant vers local_path.
 
@@ -48,6 +48,16 @@ class RemoteSync:
         côté de la BD distante : cela signifie que LMS tourne encore ou s'est mal
         arrêté, et que `persist.db` sur disque ne contient pas les dernières
         écritures. Récupérer le `.db` seul donnerait une base périmée.
+
+        Si use_sudo est activé, la copie passe par /tmp (via `sudo cp`) car
+        l'utilisateur SSH n'a pas le droit de lire directement la BD : LMS la
+        régénère avec un mode 0600 appartenant à squeezeboxserver. Voir
+        _fetch_via_sudo.
+
+        Args:
+            local_path: Destination locale du fichier.
+            sudo_password: Mot de passe sudo de l'utilisateur SSH distant.
+                Requis uniquement si use_sudo est activé.
 
         Returns:
             True si le transfert a réussi.
@@ -70,12 +80,16 @@ class RemoteSync:
                 "arrêté. Arrêtez LMS sur l'hôte distant et réessayez."
             )
 
-        source = f"{self.config.user}@{self.config.host}:{self.config.db_path}"
         dest = str(Path(local_path))
-
         # Créer le répertoire parent si besoin
         Path(dest).parent.mkdir(parents=True, exist_ok=True)
 
+        if self.config.use_sudo:
+            return self._fetch_via_sudo(dest, sudo_password)
+        return self._fetch_direct(dest)
+
+    def _fetch_direct(self, dest: str) -> bool:
+        source = f"{self.config.user}@{self.config.host}:{self.config.db_path}"
         cmd = [
             "scp",
             "-P", str(self.config.ssh_port),
@@ -108,6 +122,106 @@ class RemoteSync:
         except Exception as e:
             logger.error(f"Erreur inattendue lors du transfert SCP: {e}")
             return False
+
+    def _fetch_via_sudo(self, dest: str, sudo_password: str | None) -> bool:
+        """
+        Récupération en deux étapes quand l'utilisateur SSH n'a pas le droit de
+        lire la BD (mode 0600 / squeezeboxserver, régénérée par LMS) :
+
+        1. SSH + `sudo -S` (mot de passe lu sur stdin) qui, en une seule
+           commande root, copie la BD vers /tmp puis donne la propriété du
+           fichier temporaire à l'utilisateur SSH (afin qu'il puisse le lire).
+        2. SCP du fichier temporaire vers le poste local.
+        3. Suppression du fichier temporaire distant (best effort).
+        """
+        if not sudo_password:
+            logger.error(
+                "use_sudo est activé mais aucun mot de passe sudo n'a été fourni"
+            )
+            return False
+
+        remote_tmp = f"/tmp/persist_fetch_{os.getpid()}.db"
+
+        # Étape 1 : copie privilégiée vers /tmp, rendue lisible par l'utilisateur SSH.
+        src = self.config.db_path
+        inner = (
+            f"SRC={shlex.quote(src)}; TMP={shlex.quote(remote_tmp)}; "
+            f"USER={shlex.quote(self.config.user)}; "
+            'cp "$SRC" "$TMP" || exit 1; '
+            'chown "$USER" "$TMP"; '
+            "exit 0"
+        )
+        remote_cmd = f"sudo -S -p '' sh -c {shlex.quote(inner)}"
+        ssh_cmd = [
+            "ssh",
+            "-p", str(self.config.ssh_port),
+            "-o", "BatchMode=yes",
+            "-o", f"ConnectTimeout={self.config.timeout}",
+            "-o", "StrictHostKeyChecking=no",
+            f"{self.config.user}@{self.config.host}",
+            remote_cmd,
+        ]
+        logger.info(f"sudo cp {src} → {remote_tmp} (lecture via {self.config.user})")
+        try:
+            result = subprocess.run(
+                ssh_cmd,
+                input=sudo_password + "\n",
+                capture_output=True,
+                text=True,
+                timeout=self.config.timeout + 5,
+            )
+            if result.returncode != 0:
+                err = result.stderr.strip()
+                if "incorrect password" in err or "Sorry, try again" in err:
+                    err = "mot de passe sudo incorrect"
+                logger.error(f"Copie privilégiée vers /tmp a échoué : {err}")
+                return False
+        except subprocess.TimeoutExpired:
+            logger.error("Délai dépassé lors de la copie privilégiée vers /tmp")
+            return False
+        except Exception as e:
+            logger.error(f"Erreur SSH : {e}")
+            return False
+
+        # Étape 2 : SCP du fichier temporaire vers le poste local.
+        source = f"{self.config.user}@{self.config.host}:{remote_tmp}"
+        scp_cmd = [
+            "scp",
+            "-P", str(self.config.ssh_port),
+            "-o", "BatchMode=yes",
+            "-o", f"ConnectTimeout={self.config.timeout}",
+            "-o", "StrictHostKeyChecking=no",
+            source,
+            dest,
+        ]
+        logger.info(f"Récupération distante: {source} → {dest}")
+        ok = False
+        try:
+            result = subprocess.run(
+                scp_cmd, capture_output=True, text=True, timeout=self.config.timeout + 5,
+            )
+            if result.returncode == 0:
+                logger.info("✓ Base de données récupérée depuis l'hôte distant")
+                ok = True
+            else:
+                logger.error(
+                    f"scp depuis /tmp a échoué (code {result.returncode}): "
+                    f"{result.stderr.strip()}"
+                )
+        except subprocess.TimeoutExpired:
+            logger.error(f"Délai dépassé lors de la connexion à {self.config.host}")
+        except Exception as e:
+            logger.error(f"Erreur inattendue lors du transfert SCP: {e}")
+
+        # Étape 3 : nettoyage du fichier temporaire distant (best effort).
+        subprocess.run(
+            ["ssh", "-p", str(self.config.ssh_port),
+             "-o", "BatchMode=yes",
+             f"{self.config.user}@{self.config.host}",
+             f"rm -f {shlex.quote(remote_tmp)}"],
+            capture_output=True, timeout=10,
+        )
+        return ok
 
     def _remote_wal_present(self) -> bool:
         """

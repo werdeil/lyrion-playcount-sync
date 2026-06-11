@@ -1019,11 +1019,16 @@ class MainWindow(tk.Tk):
             return
         cfg = Config.instance()
         remote = cfg.remote
+        sudo_pw = None
+        if remote.use_sudo:
+            sudo_pw = self._ask_sudo_password(remote.host, remote.user)
+            if sudo_pw is None:
+                return
         self.fetch_btn.config(state=tk.DISABLED, text="Récupération…")
         self.update_status(f"Connexion à {remote.user}@{remote.host}…")
         self.update()
         try:
-            success = RemoteSync(remote).fetch(cfg.database.path)
+            success = RemoteSync(remote).fetch(cfg.database.path, sudo_password=sudo_pw)
         except RemoteBusyError as e:
             messagebox.showwarning("Base distante occupée", str(e))
             self.fetch_btn.config(state=tk.NORMAL, text="↓ Récupérer")
