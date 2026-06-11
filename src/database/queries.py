@@ -160,3 +160,86 @@ class SyncDetector:
         except Exception as e:
             logger.error(f"Erreur lors de la lecture des tracks alternative : {e}")
             raise
+
+    @staticmethod
+    def count_zeroed_persistent(db_manager) -> int:
+        """
+        Compte les pistes présentes dans les deux tables dont
+        tracks_persistent.playCount vaut 0 alors que alternativeplaycount > 0.
+
+        Ce sont des pistes dont le compteur interne Lyrion a été laissé à zéro
+        alors qu'un playcount existe côté alternativeplaycount (typiquement
+        laissées incohérentes par une synchro qui n'a pas répercuté la valeur).
+
+        Args:
+            db_manager: Instance de DatabaseManager
+
+        Returns:
+            Nombre de pistes concernées
+
+        Raises:
+            Exception: En cas d'erreur de requête
+        """
+        try:
+            with db_manager.cursor(commit=False) as cursor:
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM tracks_persistent tp
+                    JOIN alternativeplaycount ap ON tp.urlmd5 = ap.urlmd5
+                    WHERE IFNULL(tp.playCount, 0) = 0
+                      AND IFNULL(ap.playCount, 0) > 0
+                """)
+                count = cursor.fetchone()[0] or 0
+                logger.debug(f"Pistes à playCount=0 à rattraper : {count}")
+                return count
+
+        except Exception as e:
+            logger.error(f"Erreur lors du comptage des playcounts à zéro : {e}")
+            raise
+
+    @staticmethod
+    def backfill_zeroed_persistent(db_manager) -> int:
+        """
+        Recopie playCount/lastPlayed depuis alternativeplaycount vers
+        tracks_persistent pour les pistes dont tracks_persistent.playCount = 0
+        et alternativeplaycount.playCount > 0.
+
+        Ne touche qu'à ces lignes : les écarts dans l'autre sens et la dérive
+        normale (deux compteurs non nuls) sont laissés intacts. lastPlayed est
+        converti en entier car alternativeplaycount le stocke en flottant.
+
+        Args:
+            db_manager: Instance de DatabaseManager
+
+        Returns:
+            Nombre de lignes mises à jour
+
+        Raises:
+            Exception: En cas d'erreur de requête
+        """
+        try:
+            with db_manager.transaction() as cursor:
+                cursor.execute("""
+                    UPDATE tracks_persistent
+                    SET playCount = (
+                            SELECT ap.playCount FROM alternativeplaycount ap
+                            WHERE ap.urlmd5 = tracks_persistent.urlmd5
+                        ),
+                        lastPlayed = (
+                            SELECT CAST(ap.lastPlayed AS INTEGER) FROM alternativeplaycount ap
+                            WHERE ap.urlmd5 = tracks_persistent.urlmd5
+                        )
+                    WHERE IFNULL(playCount, 0) = 0
+                      AND urlmd5 IN (
+                            SELECT urlmd5 FROM alternativeplaycount
+                            WHERE IFNULL(playCount, 0) > 0
+                        )
+                """)
+                updated = cursor.rowcount
+
+            logger.info(f"Backfill tracks_persistent : {updated} ligne(s) mise(s) à jour")
+            return updated
+
+        except Exception as e:
+            logger.error(f"Erreur lors du backfill des playcounts à zéro : {e}")
+            raise

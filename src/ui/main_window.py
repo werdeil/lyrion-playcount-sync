@@ -373,9 +373,54 @@ class MainWindow(tk.Tk):
             count = len(self.missing_tracks)
             self.update_status(f"{count} piste(s) désynchronisée(s) chargée(s)")
 
+            # Détection d'incohérences playCount=0 → proposition de synchro
+            # (différée pour laisser la fenêtre s'afficher avant la popup).
+            self.after(150, self._offer_backfill_zeroed)
+
         except Exception as e:
             self._hide_progressbar()
             messagebox.showerror("Erreur chargement", f"Impossible de charger les pistes : {e}")
+
+    def _offer_backfill_zeroed(self) -> None:
+        """Propose de rattraper les pistes à playCount=0 dans tracks_persistent
+        alors que alternativeplaycount possède un compteur.
+
+        Détecté au chargement de la base ; ne fait rien en lecture seule ou
+        si aucune incohérence n'est présente.
+        """
+        if not self.db_manager or getattr(self.db_manager, "readonly", False):
+            return
+
+        try:
+            count = SyncDetector.count_zeroed_persistent(self.db_manager)
+        except Exception:
+            return
+
+        if count <= 0:
+            return
+
+        if not messagebox.askyesno(
+            "Incohérence détectée",
+            f"{count} piste(s) ont un playcount à 0 dans tracks_persistent "
+            f"alors que alternativeplaycount en possède un.\n\n"
+            f"Recopier ces playcounts (et leur date de dernière lecture) "
+            f"depuis alternativeplaycount vers tracks_persistent ?",
+        ):
+            return
+
+        try:
+            updated = SyncDetector.backfill_zeroed_persistent(self.db_manager)
+            messagebox.showinfo(
+                "Synchronisé",
+                f"{updated} piste(s) mise(s) à jour dans tracks_persistent.",
+            )
+            self.update_status(
+                f"{updated} playcount(s) recopié(s) vers tracks_persistent"
+            )
+        except Exception as e:
+            messagebox.showerror(
+                "Erreur", f"Impossible de synchroniser les playcounts :\n{e}"
+            )
 
     def _reload_data(self) -> None:
         if self.pending_assignments:
@@ -557,6 +602,12 @@ class MainWindow(tk.Tk):
                 with self.db_manager.transaction() as cursor:
                     cursor.execute(
                         "UPDATE alternativeplaycount SET playCount=?, lastPlayed=? WHERE urlmd5=?",
+                        (persist_playcount, persist_lastplayed, alt_urlmd5),
+                    )
+                    # Garder tracks_persistent cohérent avec alternativeplaycount
+                    # pour le morceau cible (même urlmd5 que la ligne alternative).
+                    cursor.execute(
+                        "UPDATE tracks_persistent SET playCount=?, lastPlayed=? WHERE urlmd5=?",
                         (persist_playcount, persist_lastplayed, alt_urlmd5),
                     )
                     cursor.execute(
