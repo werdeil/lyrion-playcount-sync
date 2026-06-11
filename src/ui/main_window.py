@@ -72,9 +72,10 @@ class MainWindow(tk.Tk):
         self._setup_styles()
         self._create_widgets()
 
-        if self.db_manager:
-            self._load_tracks_from_db()
-
+        # La base n'est volontairement pas chargée au démarrage : on attend que
+        # l'utilisateur clique sur « Recharger » (base locale) ou « Récupérer »
+        # (base distante) pour éviter de travailler sur une base périmée.
+        self._show_empty_state()
         self._update_statusbar()
 
     # ─── Styles ──────────────────────────────────────────────────────────────
@@ -115,6 +116,28 @@ class MainWindow(tk.Tk):
         col_frame = ttk.Frame(stats_frame)
         col_frame.pack(fill=tk.X)
 
+        # Valeurs vides au départ : peuplées par _refresh_stats() lors du
+        # chargement de la base (Recharger / Récupérer).
+        self.stat_persistent = self._create_stat_card(col_frame, "tracks_persistent", "—")
+        self.stat_alternative = self._create_stat_card(col_frame, "alternativeplaycount", "—")
+        self.stat_desync = self._create_stat_card(col_frame, "Désynchronisés", "—")
+
+    def _create_stat_card(self, parent: ttk.Frame, title: str, value: str) -> tk.Label:
+        card = tk.Frame(parent, bg="#2c3e50", relief=tk.FLAT)
+        card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        tk.Label(
+            card, text=title,
+            font=("Segoe UI", 11, "bold"), bg="#2c3e50", fg="#3498db",
+        ).pack(pady=(8, 2))
+        value_label = tk.Label(
+            card, text=value,
+            font=("Segoe UI", 18, "bold"), bg="#2c3e50", fg="#2ecc71",
+        )
+        value_label.pack(pady=(0, 8))
+        return value_label
+
+    def _refresh_stats(self) -> None:
+        """Met à jour les cartes de statistiques depuis la base."""
         total_persistent = total_alternative = desynchronized = 0
         if self.db_manager:
             try:
@@ -131,21 +154,19 @@ class MainWindow(tk.Tk):
             except Exception:
                 pass
 
-        self._create_stat_card(col_frame, "tracks_persistent", f"{total_persistent:,}")
-        self._create_stat_card(col_frame, "alternativeplaycount", f"{total_alternative:,}")
-        self._create_stat_card(col_frame, "Désynchronisés", f"{desynchronized:,}")
+        self.stat_persistent.config(text=f"{total_persistent:,}")
+        self.stat_alternative.config(text=f"{total_alternative:,}")
+        self.stat_desync.config(text=f"{desynchronized:,}")
 
-    def _create_stat_card(self, parent: ttk.Frame, title: str, value: str) -> None:
-        card = tk.Frame(parent, bg="#2c3e50", relief=tk.FLAT)
-        card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
-        tk.Label(
-            card, text=title,
-            font=("Segoe UI", 11, "bold"), bg="#2c3e50", fg="#3498db",
-        ).pack(pady=(8, 2))
-        tk.Label(
-            card, text=value,
-            font=("Segoe UI", 18, "bold"), bg="#2c3e50", fg="#2ecc71",
-        ).pack(pady=(0, 8))
+    def _show_empty_state(self) -> None:
+        """Affiche l'écran de départ tant qu'aucune base n'a été chargée."""
+        self.stat_persistent.config(text="—")
+        self.stat_alternative.config(text="—")
+        self.stat_desync.config(text="—")
+        self.update_status(
+            "Cliquez sur « Recharger » (base locale) ou « Récupérer » "
+            "(base distante) pour charger les pistes."
+        )
 
     def _create_main_section(self, parent: ttk.Frame) -> None:
         """Panneau séparé horizontalement : pistes à gauche, suggestions à droite."""
@@ -367,6 +388,7 @@ class MainWindow(tk.Tk):
                 self.item_to_urlmd5[item_id] = urlmd5
                 self.urlmd5_to_item[urlmd5] = item_id
 
+            self._refresh_stats()
             self._update_sync_button()
             self._update_statusbar()
             self._update_progress_counter()
@@ -408,6 +430,9 @@ class MainWindow(tk.Tk):
         ):
             return
 
+        if not self._backup_before_write():
+            return
+
         try:
             updated = SyncDetector.backfill_zeroed_persistent(self.db_manager)
             messagebox.showinfo(
@@ -421,6 +446,30 @@ class MainWindow(tk.Tk):
             messagebox.showerror(
                 "Erreur", f"Impossible de synchroniser les playcounts :\n{e}"
             )
+
+    def _backup_before_write(self) -> bool:
+        """Pose une sauvegarde avant la première modification de la base.
+
+        Retourne False (et prévient l'utilisateur) si le backup est demandé
+        mais échoue, afin d'annuler l'écriture. Ne fait rien si la sauvegarde
+        automatique est désactivée ou déjà effectuée pour cette base.
+        """
+        if not self.db_manager:
+            return False
+        if not Config.instance().database.auto_backup:
+            return True
+        try:
+            path = self.db_manager.backup_if_needed()
+            if path:
+                self.update_status(f"Sauvegarde créée : {path}")
+            return True
+        except Exception as e:
+            messagebox.showerror(
+                "Sauvegarde impossible",
+                f"Impossible de créer la sauvegarde avant modification :\n{e}\n\n"
+                "Opération annulée.",
+            )
+            return False
 
     def _reload_data(self) -> None:
         if self.pending_assignments:
@@ -578,6 +627,9 @@ class MainWindow(tk.Tk):
             "  • Copier les playcounts vers alternativeplaycount\n"
             "  • Supprimer les entrées de tracks_persistent",
         ):
+            return
+
+        if not self._backup_before_write():
             return
 
         success_count = 0

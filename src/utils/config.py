@@ -25,8 +25,7 @@ logger = logging.getLogger(__name__)
 class DatabaseConfig:
     """Configuration de la base de données."""
     path: str = None  # Will be set from env or default
-    auto_backup: bool = True
-    backup_on_startup: bool = True
+    auto_backup: bool = True  # Sauvegarde avant la première modification de la base
     backup_retention_days: int = 7
     
     def __post_init__(self):
@@ -191,7 +190,9 @@ class Config:
                 self.remote = RemoteConfig(**remote_data)
 
             if 'database' in data:
-                self.database = DatabaseConfig(**data['database'])
+                db_data = dict(data['database'])
+                db_data.pop('backup_on_startup', None)  # clé obsolète, ignorée
+                self.database = DatabaseConfig(**db_data)
             
             if 'matching' in data:
                 match_data = data['matching']

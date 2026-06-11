@@ -64,7 +64,6 @@ class TestDatabaseConfig:
         
         assert config.path == "/config/prefs/persist.db"
         assert config.auto_backup is True
-        assert config.backup_on_startup is True
         assert config.backup_retention_days == 7
     
     def test_custom_values(self):

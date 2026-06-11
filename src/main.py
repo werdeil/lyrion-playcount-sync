@@ -155,15 +155,11 @@ class Application:
                 return False
             
             self.logger.info("✓ Connexion établie")
-            
-            # Créer une sauvegarde si configuré
-            if self.config.database.backup_on_startup:
-                try:
-                    backup_path = self.db.backup_database()
-                    self.logger.info(f"✓ Sauvegarde créée: {backup_path}")
-                except Exception as e:
-                    self.logger.warning(f"Erreur sauvegarde: {e}")
-            
+
+            # La sauvegarde n'est plus créée au démarrage : elle est posée
+            # à la demande, juste avant la première modification de la base
+            # (voir DatabaseManager.backup_if_needed()).
+
             # Vérifier le schéma
             if not self.db.verify_schema():
                 self.logger.error(

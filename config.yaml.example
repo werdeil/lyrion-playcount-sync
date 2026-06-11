@@ -21,10 +21,8 @@ remote:
 database:
   # Chemin vers la base de données persist.db de Lyrion
   path: "./persist.db"
-  # Sauvegarde automatique de la base de données
+  # Sauvegarde automatique avant la première modification de la base
   auto_backup: true
-  # Sauvegarder au démarrage de l'application
-  backup_on_startup: true
   # Nombre de jours de rétention des sauvegardes
   backup_retention_days: 7
 

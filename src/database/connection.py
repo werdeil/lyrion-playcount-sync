@@ -60,6 +60,9 @@ class DatabaseManager:
         self.connection: Optional[sqlite3.Connection] = None
         self.readonly: bool = False
         self.backup_dir: Path = Path('backups')
+        # Un seul backup par base chargée : posé juste avant la première
+        # modification, réinitialisé à chaque (re)connexion.
+        self._backup_done: bool = False
         
         # Créer le répertoire des backups
         self.backup_dir.mkdir(exist_ok=True)
@@ -167,7 +170,11 @@ class DatabaseManager:
         if self.connection:
             logger.warning("Connexion déjà établie")
             return
-        
+
+        # Nouvelle base en mémoire : un backup sera de nouveau requis avant
+        # la prochaine modification.
+        self._backup_done = False
+
         try:
             # Mode lecture/écriture ou lecture seule
             if readonly:
@@ -256,6 +263,24 @@ class DatabaseManager:
         except Exception as e:
             raise DatabaseConnectionError(f"Erreur inattendue : {e}")
     
+    def backup_if_needed(self) -> Optional[str]:
+        """
+        Crée une sauvegarde une seule fois par base chargée, avant la première
+        modification.
+
+        À appeler juste avant toute écriture en base. Les appels suivants (et le
+        mode lecture seule) ne refont pas de sauvegarde tant que la connexion
+        n'a pas été réétablie.
+
+        Returns:
+            Le chemin du backup créé, ou None si aucun n'était nécessaire.
+        """
+        if self.readonly or self._backup_done:
+            return None
+        backup_path = self.backup_database()
+        self._backup_done = True
+        return backup_path
+
     def verify_schema(self) -> bool:
         """
         Vérifie que le schéma est valide pour Lyrion.
