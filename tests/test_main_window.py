@@ -33,6 +33,7 @@ def win():
     w.urlmd5_to_item = {"md5_a": "item1", "md5_b": "item2"}
     w.suggestion_items = {}
     w.alternative_tracks = []
+    w.ignored_tracks = set()
     w.db_path = "test.db"
     w.db_manager = None
     w.matcher = None
@@ -44,8 +45,16 @@ def win():
     w.sync_btn = MagicMock()
     w.status_label = MagicMock()
     w.db_label = MagicMock()
+    w.counter_label = MagicMock()
 
     return w
+
+
+def _assert_sync_btn(win, text, state):
+    """Vérifie le libellé et l'état du bouton Sync sans contraindre le style."""
+    kwargs = win.sync_btn.config.call_args.kwargs
+    assert kwargs["text"] == text
+    assert kwargs["state"] == state
 
 
 class TestAssignment:
@@ -59,9 +68,7 @@ class TestAssignment:
     def test_assign_enables_sync_button(self, win):
         alt = {"urlmd5": "alt_1", "title": "Song", "match_score": 85.0}
         win._assign_track("md5_a", alt)
-        win.sync_btn.config.assert_called_with(
-            text="Sync assignées (1)", state=tk.NORMAL
-        )
+        _assert_sync_btn(win, "Sync assignées (1)", tk.NORMAL)
 
     def test_reassign_replaces_previous(self, win):
         alt1 = {"urlmd5": "alt_1", "title": "Song A", "match_score": 85.0}
@@ -76,9 +83,7 @@ class TestAssignment:
         win._assign_track("md5_a", {"urlmd5": "alt_1", "title": "A", "match_score": 90.0})
         win._assign_track("md5_b", {"urlmd5": "alt_2", "title": "B", "match_score": 80.0})
         assert len(win.pending_assignments) == 2
-        win.sync_btn.config.assert_called_with(
-            text="Sync assignées (2)", state=tk.NORMAL
-        )
+        _assert_sync_btn(win, "Sync assignées (2)", tk.NORMAL)
 
     def test_deassign_removes_from_pending(self, win):
         win.pending_assignments["md5_a"] = {"urlmd5": "alt_1"}
@@ -88,9 +93,7 @@ class TestAssignment:
     def test_deassign_disables_button_when_empty(self, win):
         win.pending_assignments["md5_a"] = {"urlmd5": "alt_1"}
         win._deassign_track("md5_a")
-        win.sync_btn.config.assert_called_with(
-            text="Sync assignées (0)", state=tk.DISABLED
-        )
+        _assert_sync_btn(win, "Sync assignées (0)", tk.DISABLED)
 
     def test_deassign_unknown_urlmd5_is_noop(self, win):
         win._deassign_track("nonexistent_md5")
@@ -109,24 +112,18 @@ class TestSyncButton:
 
     def test_disabled_with_no_assignments(self, win):
         win._update_sync_button()
-        win.sync_btn.config.assert_called_with(
-            text="Sync assignées (0)", state=tk.DISABLED
-        )
+        _assert_sync_btn(win, "Sync assignées (0)", tk.DISABLED)
 
     def test_enabled_with_one_assignment(self, win):
         win.pending_assignments["md5_a"] = {"urlmd5": "alt_1"}
         win._update_sync_button()
-        win.sync_btn.config.assert_called_with(
-            text="Sync assignées (1)", state=tk.NORMAL
-        )
+        _assert_sync_btn(win, "Sync assignées (1)", tk.NORMAL)
 
     def test_label_reflects_count(self, win):
         for i in range(5):
             win.pending_assignments[f"md5_{i}"] = {"urlmd5": f"alt_{i}"}
         win._update_sync_button()
-        win.sync_btn.config.assert_called_with(
-            text="Sync assignées (5)", state=tk.NORMAL
-        )
+        _assert_sync_btn(win, "Sync assignées (5)", tk.NORMAL)
 
 
 class TestIgnore:
@@ -143,9 +140,7 @@ class TestIgnore:
         win.tracks_tree.selection.return_value = ("item1",)
         win._ignore_selected_track()
         assert "md5_a" not in win.pending_assignments
-        win.sync_btn.config.assert_called_with(
-            text="Sync assignées (0)", state=tk.DISABLED
-        )
+        _assert_sync_btn(win, "Sync assignées (0)", tk.DISABLED)
 
     def test_ignore_with_no_selection_is_noop(self, win):
         win.tracks_tree.selection.return_value = ()
