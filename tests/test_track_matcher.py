@@ -1,7 +1,7 @@
 """Tests pour la classe TrackMatcher."""
 
 import pytest
-from src.matching.fuzzy_matcher import TrackMatcher
+from lyrion_playcount_sync.matching.fuzzy_matcher import TrackMatcher
 
 
 @pytest.fixture

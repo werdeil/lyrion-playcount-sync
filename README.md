@@ -80,22 +80,40 @@ docker-compose -f config/docker-compose.yml up -d
 docker-compose -f config/docker-compose.yml down
 ```
 
-### Option 2 : Installation Locale (Développement)
+### Option 2 : Installation via pip (Recommandé en local)
+
+L'application s'installe comme un package Python. Une fois installée, la commande
+`lyrion-playcount-sync` lance directement l'interface graphique **depuis
+n'importe quel répertoire** :
 
 ```bash
 # Créer environnement virtuel
 python3 -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Installer dépendances
-pip install -r requirements.txt
+# Installer le package (depuis la racine du projet)
+pip install .            # ou: pip install -e .  pour le mode développement
 
-# Configurer
-cp config/config.yaml.example config.yaml
+# Lancer le GUI (de n'importe où)
+lyrion-playcount-sync
+```
+
+`config.yaml` est cherché dans le répertoire courant ; s'il est absent,
+l'application démarre avec les valeurs par défaut de l'exemple embarqué. Pour
+personnaliser, copiez l'exemple et adaptez `database.path` :
+
+```bash
+python3 -c "import lyrion_playcount_sync, shutil; shutil.copy(lyrion_playcount_sync.example_config_path(), 'config.yaml')"
 nano config.yaml
+```
 
-# Lancer
-python3 scripts/run.py
+### Option 3 : Lancement direct (Développement)
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python3 scripts/run.py          # équivalent, sans installation pip
 ```
 
 ## 📖 Guide d'Utilisation

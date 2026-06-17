@@ -4,7 +4,7 @@ import tkinter as tk
 import pytest
 from unittest.mock import MagicMock
 
-from src.ui.main_window import MainWindow
+from lyrion_playcount_sync.ui.main_window import MainWindow
 
 
 @pytest.fixture

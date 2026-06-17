@@ -6,7 +6,7 @@ from typing import Optional
 from contextlib import contextmanager
 from datetime import datetime
 
-from src.utils import setup_logger
+from lyrion_playcount_sync.utils import setup_logger
 
 logger = setup_logger(__name__)
 

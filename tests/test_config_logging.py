@@ -8,11 +8,11 @@ import logging
 from pathlib import Path
 import yaml
 
-from src.utils.config import (
+from lyrion_playcount_sync.utils.config import (
     Config, DatabaseConfig, MatchingConfig, SyncConfig, 
     UIConfig, LoggingConfig
 )
-from src.utils.logger import setup_logger, LEVEL_NAMES
+from lyrion_playcount_sync.utils.logger import setup_logger, LEVEL_NAMES
 
 
 class TestLogger:

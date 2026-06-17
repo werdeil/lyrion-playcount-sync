@@ -12,22 +12,27 @@ Point d'entrée de l'application qui coordonne:
 
 import sys
 import os
+import shutil
 import tkinter as tk
 from pathlib import Path
 from typing import Optional
 
 # Imports locaux
-from src.ui.main_window import MainWindow
-from src.database.connection import DatabaseManager
-from src.database.queries import SyncDetector
-from src.matching.fuzzy_matcher import TrackMatcher
-from src.utils.logger import setup_logger
-from src.utils.config import Config
+from lyrion_playcount_sync.ui.main_window import MainWindow
+from lyrion_playcount_sync.database.connection import DatabaseManager
+from lyrion_playcount_sync.database.queries import SyncDetector
+from lyrion_playcount_sync.matching.fuzzy_matcher import TrackMatcher
+from lyrion_playcount_sync.utils.logger import setup_logger
+from lyrion_playcount_sync.utils.config import Config
+from lyrion_playcount_sync import (
+    example_config_path,
+    resolve_config_path,
+    user_config_path,
+)
 
 
-# Configuration par défaut
-DEFAULT_CONFIG_FILE = 'config.yaml'
-DEFAULT_CONFIG_EXAMPLE = 'config.yaml.example'
+# Exemple embarqué dans le package (fallback si aucun config.yaml n'est trouvé)
+DEFAULT_CONFIG_EXAMPLE = str(example_config_path())
 
 
 class Application:
@@ -44,7 +49,9 @@ class Application:
         Args:
             config_file: Chemin du fichier de configuration (défaut: config.yaml)
         """
-        self.config_file = config_file or DEFAULT_CONFIG_FILE
+        # Résoudre le chemin du config indépendamment du répertoire courant
+        # (script GUI installé, lancement depuis le Finder, etc.).
+        self.config_file = str(resolve_config_path(config_file))
         self.logger = None
         self.config = None
         self.db = None
@@ -93,13 +100,29 @@ class Application:
                 self.logger.warning(
                     f"Fichier config non trouvé: {self.config_file}"
                 )
-                
-                # Vérifier s'il existe un exemple
+
+                # Aucun config trouvé : on en crée un persistant dans le dossier
+                # de config utilisateur à partir de l'exemple embarqué. Ainsi les
+                # réglages (dont le serveur distant) saisis dans l'app seront
+                # sauvegardés et retrouvés au prochain lancement.
                 if Path(DEFAULT_CONFIG_EXAMPLE).exists():
-                    self.logger.info(
-                        f"Utilisation du fichier d'exemple: {DEFAULT_CONFIG_EXAMPLE}"
-                    )
-                    self.config.load_from_file(DEFAULT_CONFIG_EXAMPLE)
+                    target = user_config_path()
+                    try:
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(DEFAULT_CONFIG_EXAMPLE, target)
+                        self.config_file = str(target)
+                        self.logger.info(
+                            f"Configuration initialisée depuis l'exemple: {target}"
+                        )
+                    except OSError as e:
+                        # Échec d'écriture : on charge l'exemple en lecture seule
+                        self.logger.warning(
+                            f"Impossible de créer {target} ({e}); "
+                            f"utilisation de l'exemple en lecture seule"
+                        )
+                        target = Path(DEFAULT_CONFIG_EXAMPLE)
+                        self.config_file = str(target)
+                    self.config.load_from_file(str(target))
                 else:
                     self.logger.error(
                         "Aucun fichier de configuration trouvé! "

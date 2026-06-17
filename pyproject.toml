@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lyrion-playcount-sync"
+version = "1.0.0"
+description = "Detect and repair playcount inconsistencies between the playcount tables of Lyrion's persist.db database."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "werdeil" }]
+keywords = ["lyrion", "squeezebox", "logitech-media-server", "playcount", "scrobble", "sqlite"]
+classifiers = [
+    "Environment :: X11 Applications",
+    "Intended Audience :: End Users/Desktop",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+dependencies = [
+    "ttkbootstrap>=1.10.0",
+    "rapidfuzz>=3.0.0",
+    "pyyaml>=6.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[project.gui-scripts]
+lyrion-playcount-sync = "lyrion_playcount_sync.main:main"
+
+[tool.setuptools.packages.find]
+include = ["lyrion_playcount_sync*"]
+
+[tool.setuptools.package-data]
+lyrion_playcount_sync = ["config.yaml.example"]

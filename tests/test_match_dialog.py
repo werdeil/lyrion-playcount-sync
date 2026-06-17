@@ -1,17 +1,17 @@
 """Tests unitaires pour MatchDialog."""
 
 import pytest
-from src.models import Track, SyncOperation
+from lyrion_playcount_sync.models import Track, SyncOperation
 
 
 class TestMatchDialogImport:
     """Vérifie que le module s'importe sans erreur."""
 
     def test_module_importable(self):
-        from src.ui import match_dialog  # noqa: F401
+        from lyrion_playcount_sync.ui import match_dialog  # noqa: F401
 
     def test_class_exists(self):
-        from src.ui.match_dialog import MatchDialog
+        from lyrion_playcount_sync.ui.match_dialog import MatchDialog
         assert callable(MatchDialog)
 
 

@@ -14,9 +14,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, Callable
 
-from src.utils.config import Config
-from src.utils.remote_sync import RemoteSync, RemoteBusyError
-from src.database.queries import SyncDetector
+from lyrion_playcount_sync.utils.config import Config
+from lyrion_playcount_sync.utils.remote_sync import RemoteSync, RemoteBusyError
+from lyrion_playcount_sync.database.queries import SyncDetector
 
 
 class MainWindow(tk.Tk):

@@ -4,7 +4,7 @@ import re
 from urllib.parse import unquote
 from pathlib import PurePosixPath
 from typing import List, Dict
-from src.utils import setup_logger
+from lyrion_playcount_sync.utils import setup_logger
 
 logger = setup_logger(__name__)
 

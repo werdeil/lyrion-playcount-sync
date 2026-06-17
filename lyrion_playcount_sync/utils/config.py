@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional
 from dataclasses import dataclass, asdict, fields as dc_fields
 import logging
 
-from src.utils.remote_sync import RemoteConfig  # noqa: F401 — réexporté
+from lyrion_playcount_sync.utils.remote_sync import RemoteConfig  # noqa: F401 — réexporté
 
 logger = logging.getLogger(__name__)
 

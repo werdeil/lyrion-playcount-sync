@@ -6,7 +6,7 @@ Ils sont automatiquement sautés si aucune BD n'est détectée.
 
 import pytest
 
-from src.database import DatabaseManager, DatabaseConnectionError, SyncDetector
+from lyrion_playcount_sync.database import DatabaseManager, DatabaseConnectionError, SyncDetector
 
 
 @pytest.fixture(scope="module")

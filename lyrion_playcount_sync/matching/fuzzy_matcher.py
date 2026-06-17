@@ -6,8 +6,8 @@ from typing import List, Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rapidfuzz import fuzz
 
-from src.models import Track, TrackMatch
-from src.utils import setup_logger
+from lyrion_playcount_sync.models import Track, TrackMatch
+from lyrion_playcount_sync.utils import setup_logger
 
 logger = setup_logger(__name__)
 

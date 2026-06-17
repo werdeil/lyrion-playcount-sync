@@ -11,7 +11,7 @@ Affiche :
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, Callable, List
-from src.models import Track, MatchSuggestion, SyncOperation
+from lyrion_playcount_sync.models import Track, MatchSuggestion, SyncOperation
 
 
 class MatchDialog(tk.Toplevel):

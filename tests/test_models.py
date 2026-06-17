@@ -1,7 +1,7 @@
 """Tests pour les modèles Track, MatchSuggestion, SyncOperation."""
 
 import pytest
-from src.models import Track, MatchSuggestion, SyncOperation
+from lyrion_playcount_sync.models import Track, MatchSuggestion, SyncOperation
 
 
 # ── Track ────────────────────────────────────────────────────────────────────
