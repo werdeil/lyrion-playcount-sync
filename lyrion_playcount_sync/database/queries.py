@@ -5,6 +5,7 @@ from urllib.parse import unquote
 from pathlib import PurePosixPath
 from typing import List, Dict
 from lyrion_playcount_sync.utils import setup_logger
+from lyrion_playcount_sync.database.dpsv import compute_dpsv
 
 logger = setup_logger(__name__)
 
@@ -242,4 +243,83 @@ class SyncDetector:
 
         except Exception as e:
             logger.error(f"Erreur lors du backfill des playcounts à zéro : {e}")
+            raise
+
+    @staticmethod
+    def count_dpsv_mismatches(db_manager) -> int:
+        """
+        Compte les lignes de alternativeplaycount dont la DPSV stockée (dynPSval)
+        diffère de la valeur recalculée à partir de playCount/skipCount et des
+        dates de dernier événement.
+
+        Une dynPSval NULL est traitée comme 0 (valeur par défaut du plugin).
+
+        Args:
+            db_manager: Instance de DatabaseManager
+
+        Returns:
+            Nombre de lignes dont la DPSV devrait changer
+        """
+        try:
+            mismatches = 0
+            with db_manager.cursor(commit=False) as cursor:
+                cursor.execute("""
+                    SELECT playCount, skipCount, lastPlayed, lastSkipped, dynPSval
+                    FROM alternativeplaycount
+                """)
+                for play, skip, last_played, last_skipped, cur in cursor.fetchall():
+                    expected = compute_dpsv(play, skip, last_played, last_skipped)
+                    if expected != (cur or 0):
+                        mismatches += 1
+            logger.debug(f"DPSV à recalculer : {mismatches}")
+            return mismatches
+
+        except Exception as e:
+            logger.error(f"Erreur lors du comptage des DPSV : {e}")
+            raise
+
+    @staticmethod
+    def recompute_dpsv(db_manager) -> int:
+        """
+        Recalcule la DPSV (dynPSval) de toutes les lignes de alternativeplaycount
+        à partir de playCount/skipCount et des dates lastPlayed/lastSkipped, et
+        écrit les valeurs qui changent.
+
+        Le calcul reproduit l'algorithme du plugin Alternative Play Count
+        (voir lyrion_playcount_sync.database.dpsv). Seules les lignes dont la
+        valeur diffère sont mises à jour.
+
+        Args:
+            db_manager: Instance de DatabaseManager
+
+        Returns:
+            Nombre de lignes effectivement mises à jour
+        """
+        try:
+            updates = []
+            with db_manager.cursor(commit=False) as cursor:
+                cursor.execute("""
+                    SELECT urlmd5, playCount, skipCount, lastPlayed, lastSkipped, dynPSval
+                    FROM alternativeplaycount
+                """)
+                for urlmd5, play, skip, last_played, last_skipped, cur in cursor.fetchall():
+                    expected = compute_dpsv(play, skip, last_played, last_skipped)
+                    if expected != (cur or 0):
+                        updates.append((expected, urlmd5))
+
+            if not updates:
+                logger.info("Recalcul DPSV : aucune valeur à mettre à jour")
+                return 0
+
+            with db_manager.transaction() as cursor:
+                cursor.executemany(
+                    "UPDATE alternativeplaycount SET dynPSval = ? WHERE urlmd5 = ?",
+                    updates,
+                )
+
+            logger.info(f"Recalcul DPSV : {len(updates)} ligne(s) mise(s) à jour")
+            return len(updates)
+
+        except Exception as e:
+            logger.error(f"Erreur lors du recalcul des DPSV : {e}")
             raise

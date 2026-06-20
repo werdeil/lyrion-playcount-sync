@@ -282,6 +282,10 @@ class MainWindow(tk.Tk):
             command=self._reload_data, style="Action.TButton"
         ).pack(side=tk.LEFT, padx=2)
         ttk.Button(
+            actions_frame, text="Recalculer DPSV",
+            command=self._recompute_dpsv, style="Action.TButton"
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(
             actions_frame, text="Configuration",
             command=self._on_config_click, style="Action.TButton"
         ).pack(side=tk.LEFT, padx=2)
@@ -445,6 +449,59 @@ class MainWindow(tk.Tk):
         except Exception as e:
             messagebox.showerror(
                 "Erreur", f"Impossible de synchroniser les playcounts :\n{e}"
+            )
+
+    def _recompute_dpsv(self) -> None:
+        """Recalcule la DPSV (dynPSval) de alternativeplaycount à partir des
+        compteurs de lectures/skips et des dates de dernier événement.
+
+        Reproduit l'algorithme du plugin Alternative Play Count. Ne touche que
+        les lignes dont la valeur change. Inactif en lecture seule.
+        """
+        if not self.db_manager or getattr(self.db_manager, "readonly", False):
+            messagebox.showinfo(
+                "Lecture seule",
+                "La base est ouverte en lecture seule : recalcul impossible.",
+            )
+            return
+
+        try:
+            count = SyncDetector.count_dpsv_mismatches(self.db_manager)
+        except Exception as e:
+            messagebox.showerror("Erreur", f"Impossible d'analyser les DPSV :\n{e}")
+            return
+
+        if count <= 0:
+            messagebox.showinfo(
+                "DPSV à jour",
+                "Toutes les DPSV correspondent déjà à la valeur recalculée.",
+            )
+            return
+
+        if not messagebox.askyesno(
+            "Recalculer la DPSV",
+            f"{count} piste(s) ont une DPSV qui diffère de la valeur recalculée "
+            f"à partir des lectures/skips.\n\n"
+            f"⚠️ L'ordre exact des événements n'étant pas conservé, la valeur est "
+            f"approchée (le dernier événement appliqué est le plus récent d'après "
+            f"lastPlayed/lastSkipped).\n\n"
+            f"Recalculer et écrire ces DPSV ?",
+        ):
+            return
+
+        if not self._backup_before_write():
+            return
+
+        try:
+            updated = SyncDetector.recompute_dpsv(self.db_manager)
+            messagebox.showinfo(
+                "DPSV recalculée",
+                f"{updated} DPSV mise(s) à jour dans alternativeplaycount.",
+            )
+            self.update_status(f"{updated} DPSV recalculée(s)")
+        except Exception as e:
+            messagebox.showerror(
+                "Erreur", f"Impossible de recalculer les DPSV :\n{e}"
             )
 
     def _backup_before_write(self) -> bool:
