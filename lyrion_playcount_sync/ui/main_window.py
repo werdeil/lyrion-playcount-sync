@@ -13,10 +13,57 @@ import tempfile
 import tkinter as tk
 from tkinter import ttk, messagebox
 from typing import Optional, Callable
+from urllib.parse import unquote
 
 from lyrion_playcount_sync.utils.config import Config
 from lyrion_playcount_sync.utils.remote_sync import RemoteSync, RemoteBusyError
 from lyrion_playcount_sync.database.queries import SyncDetector
+
+
+class _Tooltip:
+    """Infobulle simple affichée au survol d'un widget."""
+
+    def __init__(self, widget, text: str, delay: int = 400):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self._after_id = None
+        self._tip = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _schedule(self, _event=None) -> None:
+        self._cancel()
+        self._after_id = self.widget.after(self.delay, self._show)
+
+    def _show(self) -> None:
+        if self._tip or not self.text:
+            return
+        x = self.widget.winfo_rootx() + 12
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self._tip = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        # Fond coloré sur le Toplevel + padding généreux : les coins arrondis
+        # appliqués par macOS ne rognent ainsi que la marge, pas le texte.
+        tw.configure(bg="#ffffe0")
+        tk.Label(
+            tw, text=self.text, justify=tk.LEFT,
+            bg="#ffffe0", fg="#333333",
+            font=("Segoe UI", 9), padx=12, pady=8,
+        ).pack(padx=1, pady=1)
+
+    def _hide(self, _event=None) -> None:
+        self._cancel()
+        if self._tip:
+            self._tip.destroy()
+            self._tip = None
+
+    def _cancel(self) -> None:
+        if self._after_id:
+            self.widget.after_cancel(self._after_id)
+            self._after_id = None
 
 
 class MainWindow(tk.Tk):
@@ -82,20 +129,30 @@ class MainWindow(tk.Tk):
 
     def _setup_styles(self) -> None:
         style = ttk.Style()
+        # Cartes de stats : pas de fond codé en dur, elles héritent du fond du
+        # thème ttk (cohérent avec le reste) ; l'accent vient du texte coloré.
         style.configure(
             "StatsTitle.TLabel",
             font=("Segoe UI", 11, "bold"),
-            background="#2c3e50",
-            foreground="#3498db",
+            foreground="#34495e",
         )
         style.configure(
             "StatsNumber.TLabel",
             font=("Segoe UI", 18, "bold"),
-            background="#2c3e50",
-            foreground="#2ecc71",
+            foreground="#27ae60",
         )
         style.configure("Status.TLabel", font=self.FONT_SMALL, foreground="#95a5a6")
         style.configure("Action.TButton", font=("Segoe UI", 9), padding=(8, 4))
+        # Bouton principal : même coque native que Action.TButton (forme + ombre),
+        # différencié par un texte vert gras ; grisé à l'état désactivé.
+        style.configure(
+            "Sync.TButton", font=("Segoe UI", 10, "bold"), padding=(10, 5),
+            foreground="#1e8449",
+        )
+        style.map(
+            "Sync.TButton",
+            foreground=[("disabled", "#95a5a6"), ("active", "#1e8449")],
+        )
         style.configure("Remote.TButton", font=("Segoe UI", 9), padding=(8, 4), foreground="#1a6fa8")
 
     # ─── Construction UI ─────────────────────────────────────────────────────
@@ -118,22 +175,27 @@ class MainWindow(tk.Tk):
 
         # Valeurs vides au départ : peuplées par _refresh_stats() lors du
         # chargement de la base (Recharger / Récupérer).
-        self.stat_persistent = self._create_stat_card(col_frame, "tracks_persistent", "—")
-        self.stat_alternative = self._create_stat_card(col_frame, "alternativeplaycount", "—")
+        self.stat_persistent = self._create_stat_card(col_frame, "Morceaux dans persist.db", "—")
+        self.stat_alternative = self._create_stat_card(col_frame, "Morceaux dans alternativeplaycount", "—")
         self.stat_desync = self._create_stat_card(col_frame, "Désynchronisés", "—")
 
-    def _create_stat_card(self, parent: ttk.Frame, title: str, value: str) -> tk.Label:
-        card = tk.Frame(parent, bg="#2c3e50", relief=tk.FLAT)
-        card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
-        tk.Label(
-            card, text=title,
-            font=("Segoe UI", 11, "bold"), bg="#2c3e50", fg="#3498db",
-        ).pack(pady=(8, 2))
-        value_label = tk.Label(
-            card, text=value,
-            font=("Segoe UI", 18, "bold"), bg="#2c3e50", fg="#2ecc71",
+    def _create_stat_card(self, parent: ttk.Frame, title: str, value: str) -> ttk.Label:
+        # Fond identique au thème ttk (cohérent avec le reste) + bordure fine
+        # pour redonner la délimitation « carte ».
+        bg = ttk.Style().lookup("TFrame", "background") or self.cget("background")
+        card = tk.Frame(
+            parent, bg=bg,
+            highlightbackground="#bdc3c7", highlightcolor="#bdc3c7",
+            highlightthickness=1, bd=0,
         )
-        value_label.pack(pady=(0, 8))
+        card.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        ttk.Label(
+            card, text=title, style="StatsTitle.TLabel", anchor=tk.CENTER,
+        ).pack(fill=tk.X, pady=(8, 2), padx=8)
+        value_label = ttk.Label(
+            card, text=value, style="StatsNumber.TLabel", anchor=tk.CENTER,
+        )
+        value_label.pack(fill=tk.X, pady=(0, 8), padx=8)
         return value_label
 
     def _refresh_stats(self) -> None:
@@ -173,8 +235,15 @@ class MainWindow(tk.Tk):
         paned = ttk.PanedWindow(parent, orient=tk.HORIZONTAL)
         paned.pack(fill=tk.BOTH, expand=True, pady=(0, 8))
 
-        left_frame = ttk.LabelFrame(paned, text="Pistes désynchronisées", padding=5)
-        right_frame = ttk.LabelFrame(paned, text="Suggestions", padding=5)
+        # Les deux titres sont fournis comme widgets avec la même police, pour
+        # garantir une taille identique (et attacher une infobulle à droite).
+        title_font = ("Segoe UI", 10)
+        tracks_title = ttk.Label(paned, text="Pistes désynchronisées", font=title_font)
+        left_frame = ttk.LabelFrame(paned, labelwidget=tracks_title, padding=5)
+
+        suggestions_title = ttk.Label(paned, text="Suggestions ⓘ", font=title_font)
+        _Tooltip(suggestions_title, "Cliquer sur une piste pour voir les suggestions")
+        right_frame = ttk.LabelFrame(paned, labelwidget=suggestions_title, padding=5)
 
         paned.add(left_frame, weight=3)
         paned.add(right_frame, weight=2)
@@ -183,12 +252,12 @@ class MainWindow(tk.Tk):
         self._create_suggestions_panel(right_frame)
 
     def _create_tracks_panel(self, parent: ttk.Frame) -> None:
-        columns = ("Artiste", "Titre", "Écoutes", "Statut")
+        columns = ("Artiste", "Fichier", "Écoutes", "Statut")
         self.tracks_tree = ttk.Treeview(
             parent, columns=columns, show="headings", selectmode="browse"
         )
 
-        widths = [150, 260, 70, 110]
+        widths = [150, 320, 70, 110]
         for col, width in zip(columns, widths):
             self.tracks_tree.heading(
                 col, text=col, command=lambda c=col: self._sort_tracks(c)
@@ -210,20 +279,12 @@ class MainWindow(tk.Tk):
         self.tracks_tree.bind("<Button-3>", self._on_track_right_click)
 
     def _create_suggestions_panel(self, parent: ttk.Frame) -> None:
-        self.track_info_label = ttk.Label(
-            parent,
-            text="Cliquer sur une piste pour voir les suggestions",
-            font=self.FONT_SMALL,
-            wraplength=400,
-        )
-        self.track_info_label.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 6))
-
-        columns = ("Score", "Artiste", "Titre", "Écoutes")
+        columns = ("Score", "Artiste", "Fichier", "Écoutes")
         self.suggestions_tree = ttk.Treeview(
             parent, columns=columns, show="headings", selectmode="browse"
         )
 
-        widths = [75, 130, 200, 60]
+        widths = [75, 120, 260, 60]
         anchors = [tk.CENTER, tk.W, tk.W, tk.W]
         for col, width, anchor in zip(columns, widths, anchors):
             self.suggestions_tree.heading(col, text=col)
@@ -232,9 +293,10 @@ class MainWindow(tk.Tk):
         vsb2 = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.suggestions_tree.yview)
         self.suggestions_tree.configure(yscroll=vsb2.set)
 
-        self.suggestions_tree.grid(row=1, column=0, sticky="nsew")
-        vsb2.grid(row=1, column=1, sticky="ns")
-        parent.grid_rowconfigure(1, weight=1)
+        self.suggestions_tree.grid(row=0, column=0, sticky="nsew")
+        vsb2.grid(row=0, column=1, sticky="ns")
+
+        parent.grid_rowconfigure(0, weight=1)
         parent.grid_columnconfigure(0, weight=1)
 
         self.suggestions_tree.tag_configure("likely", foreground=self.COLOR_GOOD)
@@ -250,21 +312,14 @@ class MainWindow(tk.Tk):
         actions_frame = ttk.Frame(parent)
         actions_frame.pack(fill=tk.X, pady=(0, 8))
 
-        # Groupe 1 — action principale (tk.Button pour l'accent couleur)
-        self.sync_btn = tk.Button(
+        # Groupe 1 — action principale : ttk.Button natif (même forme/ombre que
+        # les boutons secondaires), accent vert via le style Sync.TButton.
+        self.sync_btn = ttk.Button(
             actions_frame,
             text="Sync assignées (0)",
             command=self._sync_assigned_tracks,
+            style="Sync.TButton",
             state=tk.DISABLED,
-            font=("Segoe UI", 10, "bold"),
-            bg="#95a5a6",
-            fg="white",
-            activebackground="#27ae60",
-            activeforeground="white",
-            relief=tk.RAISED,
-            padx=10,
-            pady=5,
-            cursor="arrow",
         )
         self.sync_btn.pack(side=tk.LEFT, padx=(0, 6))
 
@@ -278,10 +333,6 @@ class MainWindow(tk.Tk):
             command=self._ignore_selected_track, style="Action.TButton"
         ).pack(side=tk.LEFT, padx=2)
         ttk.Button(
-            actions_frame, text="Recharger",
-            command=self._reload_data, style="Action.TButton"
-        ).pack(side=tk.LEFT, padx=2)
-        ttk.Button(
             actions_frame, text="Recalculer DPSV",
             command=self._recompute_dpsv, style="Action.TButton"
         ).pack(side=tk.LEFT, padx=2)
@@ -290,7 +341,8 @@ class MainWindow(tk.Tk):
             command=self._on_config_click, style="Action.TButton"
         ).pack(side=tk.LEFT, padx=2)
 
-        # Groupe 3 — actions distantes (droite, texte bleu distinctif)
+        # Groupe 3 — actions sur la base complète (droite) : recharger la base
+        # locale et, si configuré, échanger avec la base distante. Même style.
         cfg = Config.instance()
         if cfg.remote.is_configured():
             self.push_btn = ttk.Button(
@@ -303,9 +355,13 @@ class MainWindow(tk.Tk):
                 command=self._fetch_remote_db, style="Remote.TButton"
             )
             self.fetch_btn.pack(side=tk.RIGHT, padx=2)
-            ttk.Separator(actions_frame, orient=tk.VERTICAL).pack(
-                side=tk.RIGHT, fill=tk.Y, padx=6
-            )
+        ttk.Button(
+            actions_frame, text="↻ Recharger",
+            command=self._reload_data, style="Remote.TButton"
+        ).pack(side=tk.RIGHT, padx=2)
+        ttk.Separator(actions_frame, orient=tk.VERTICAL).pack(
+            side=tk.RIGHT, fill=tk.Y, padx=6
+        )
 
     def _create_statusbar(self) -> None:
         statusbar = ttk.Frame(self, relief=tk.SUNKEN, borderwidth=1)
@@ -383,11 +439,12 @@ class MainWindow(tk.Tk):
                 self.missing_tracks[urlmd5] = track
 
                 artist = track.get("artist_name") or ""
-                title = track.get("title") or "[ORPHELIN]"
+                url = track.get("url") or ""
+                filename = self._filename_from_url(url) if url else "[ORPHELIN]"
                 playcount = track.get("playcount", 0)
 
                 item_id = self.tracks_tree.insert(
-                    "", tk.END, values=(artist, title, playcount, "—")
+                    "", tk.END, values=(artist, filename, playcount, "—")
                 )
                 self.item_to_urlmd5[item_id] = urlmd5
                 self.urlmd5_to_item[urlmd5] = item_id
@@ -551,12 +608,7 @@ class MainWindow(tk.Tk):
 
     def _show_suggestions(self, track_data: dict) -> None:
         """Calcule et affiche les suggestions pour la piste sélectionnée (Étape 2)."""
-        artist = track_data.get("artist_name") or ""
-        title = track_data.get("title") or "[ORPHELIN]"
-        playcount = track_data.get("playcount", 0)
         urlmd5 = track_data["urlmd5"]
-
-        self.track_info_label.config(text=f"{artist} — {title}  ({playcount} écoutes)")
 
         self.suggestions_tree.delete(*self.suggestions_tree.get_children())
         self.suggestion_items.clear()
@@ -583,7 +635,7 @@ class MainWindow(tk.Tk):
             score = match["match_score"]
             alt_urlmd5 = match.get("urlmd5") or ""
             alt_artist = match.get("artist") or ""
-            alt_title = match.get("title") or ""
+            alt_filename = self._filename_from_url(match.get("url") or "")
             alt_playcount = match.get("playcount", 0)
 
             tag = "likely" if score >= 80 else "possible" if score >= 60 else "unlikely"
@@ -598,13 +650,20 @@ class MainWindow(tk.Tk):
             item_id = self.suggestions_tree.insert(
                 "",
                 tk.END,
-                values=(score_text, alt_artist, alt_title, alt_playcount),
+                values=(score_text, alt_artist, alt_filename, alt_playcount),
                 tags=tuple(tags),
             )
             self.suggestion_items[item_id] = match
 
             if is_current:
                 self.suggestions_tree.selection_set(item_id)
+
+    @staticmethod
+    def _filename_from_url(url: str) -> str:
+        """Renvoie le nom de fichier décodé (avec extension) depuis une URL Lyrion."""
+        if not url:
+            return "—"
+        return unquote(url).rstrip("/").rsplit("/", 1)[-1] or "—"
 
     # ─── Étape 2 : clic sur suggestion → assignation ─────────────────────────
 
@@ -654,19 +713,11 @@ class MainWindow(tk.Tk):
         count = len(self.pending_assignments)
         if count > 0:
             self.sync_btn.config(
-                text=f"Sync assignées ({count})",
-                state=tk.NORMAL,
-                bg="#27ae60",
-                fg="white",
-                cursor="hand2",
+                text=f"Sync assignées ({count})", state=tk.NORMAL,
             )
         else:
             self.sync_btn.config(
-                text="Sync assignées (0)",
-                state=tk.DISABLED,
-                bg="#95a5a6",
-                fg="white",
-                cursor="arrow",
+                text="Sync assignées (0)", state=tk.DISABLED,
             )
 
     # ─── Étape 3 : synchronisation ────────────────────────────────────────────
@@ -743,11 +794,9 @@ class MainWindow(tk.Tk):
 
         self.suggestions_tree.delete(*self.suggestions_tree.get_children())
         self.suggestion_items.clear()
-        self.track_info_label.config(
-            text="Cliquer sur une piste pour voir les suggestions"
-        )
         self._update_sync_button()
         self._update_progress_counter()
+        self._refresh_stats()
 
         if errors:
             messagebox.showwarning(
@@ -784,9 +833,6 @@ class MainWindow(tk.Tk):
         self._update_progress_counter()
         self.suggestions_tree.delete(*self.suggestions_tree.get_children())
         self.suggestion_items.clear()
-        self.track_info_label.config(
-            text="Cliquer sur une piste pour voir les suggestions"
-        )
 
     # ─── Clic droit ──────────────────────────────────────────────────────────
 

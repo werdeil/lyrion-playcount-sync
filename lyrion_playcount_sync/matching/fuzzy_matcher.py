@@ -275,18 +275,19 @@ class TrackMatcher:
                 'title': alt_track.get('title', ''),
                 'artist': alt_track.get('artist_name', ''),
                 'album': alt_track.get('album_title', ''),
+                'url': alt_track.get('url', ''),
                 'playcount': alt_track.get('playcount', 0),
                 'source': alt_track.get('source', ''),
                 'match_score': score_data['total_score'],
                 'score_breakdown': score_data['breakdown'],
                 'match_quality': self._get_match_quality(score_data['total_score'])
             })
-        
+
         # Trier par score décroissant
         matches.sort(key=lambda x: x['match_score'], reverse=True)
-        
+
         return matches[:top_n]
-    
+
     def _find_best_matches_parallel(
         self,
         missing_track: Dict[str, Any],
@@ -321,6 +322,7 @@ class TrackMatcher:
                         'title': alt_track.get('title', ''),
                         'artist': alt_track.get('artist_name', ''),
                         'album': alt_track.get('album_title', ''),
+                        'url': alt_track.get('url', ''),
                         'playcount': alt_track.get('playcount', 0),
                         'source': alt_track.get('source', ''),
                         'match_score': score_data['total_score'],

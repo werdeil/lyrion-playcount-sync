@@ -41,7 +41,6 @@ def win():
     w.tracks_tree = MagicMock()
     w.tracks_tree.item.return_value = ("Artist", "Title", "10", "—")
     w.suggestions_tree = MagicMock()
-    w.track_info_label = MagicMock()
     w.sync_btn = MagicMock()
     w.status_label = MagicMock()
     w.db_label = MagicMock()
@@ -133,7 +132,6 @@ class TestIgnore:
         win.tracks_tree.selection.return_value = ("item1",)
         win._ignore_selected_track()
         win.suggestions_tree.delete.assert_called()
-        win.track_info_label.config.assert_called()
 
     def test_ignore_removes_pending_assignment(self, win):
         win.pending_assignments["md5_a"] = {"urlmd5": "alt_1"}
