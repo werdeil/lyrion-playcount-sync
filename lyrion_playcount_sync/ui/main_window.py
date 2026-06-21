@@ -17,6 +17,7 @@ from urllib.parse import unquote
 
 from lyrion_playcount_sync.utils.config import Config
 from lyrion_playcount_sync.utils.remote_sync import RemoteSync, RemoteBusyError
+from lyrion_playcount_sync.database.connection import DatabaseManager
 from lyrion_playcount_sync.database.queries import SyncDetector
 
 
@@ -1148,6 +1149,12 @@ class MainWindow(tk.Tk):
             if self.db_manager:
                 self.db_manager.close()
                 self.db_manager.connect()
+            else:
+                # Démarrage sans base (absente au lancement) : on crée la
+                # connexion maintenant que la base a été récupérée.
+                self.db_manager = DatabaseManager(cfg.database.path)
+                self.db_manager.connect()
+                self.db_path = str(self.db_manager.db_path)
         except Exception as e:
             messagebox.showerror("Erreur BD", f"Reconnexion impossible : {e}")
             self.fetch_btn.config(state=tk.NORMAL, text="↓ Récupérer")

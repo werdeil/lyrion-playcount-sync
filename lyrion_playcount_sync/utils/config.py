@@ -208,7 +208,16 @@ class Config:
                 self.logging = LoggingConfig(**data['logging'])
             
             self._config_file = config_path
-            
+
+            # Un chemin de base relatif (ex. « ./persist.db ») est résolu par
+            # rapport au dossier du fichier de config, et NON au répertoire
+            # courant : l'app, lancée globalement depuis n'importe où (pipx,
+            # Finder…), retrouve ainsi toujours la même base.
+            if self.database.path and not Path(self.database.path).is_absolute():
+                self.database.path = str(
+                    (config_path.parent / self.database.path).resolve()
+                )
+
             # Valider les configurations
             self.validate()
             

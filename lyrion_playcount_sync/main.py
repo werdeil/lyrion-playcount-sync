@@ -159,44 +159,52 @@ class Application:
     def connect_database(self) -> bool:
         """
         Étape 3: Établir la connexion à la base de données.
-        
+
+        Une base absente ou invalide n'est PAS fatale : on démarre quand même
+        l'interface avec ``self.db = None``. L'utilisateur peut alors récupérer
+        la base distante (« ↓ Récupérer ») ou pointer vers une base valide,
+        au lieu de se heurter à un crash au démarrage.
+
         Returns:
-            bool: True si succès
+            bool: True (le démarrage n'est jamais bloqué par la BD)
         """
+        db_path = self.config.database.path
+        self.logger.info(f"Connexion à la base de données: {db_path}")
+
+        # Créer le gestionnaire de BD et établir la connexion.
         try:
-            db_path = self.config.database.path
-            self.logger.info(f"Connexion à la base de données: {db_path}")
-            
-            # Créer le gestionnaire de BD
             self.db = DatabaseManager(db_path)
-            
-            # Établir la connexion
-            try:
-                self.db.connect()
-            except Exception as e:
-                self.logger.error(f"Impossible de se connecter à la base de données: {e}")
-                return False
-            
-            self.logger.info("✓ Connexion établie")
-
-            # La sauvegarde n'est plus créée au démarrage : elle est posée
-            # à la demande, juste avant la première modification de la base
-            # (voir DatabaseManager.backup_if_needed()).
-
-            # Vérifier le schéma
-            if not self.db.verify_schema():
-                self.logger.error(
-                    "Schéma Lyrion invalide! "
-                    "La base de données n'est pas une BD Lyrion valide."
-                )
-                return False
-            
-            self.logger.info("✓ Schéma vérifié")
-            return True
-            
+            self.db.connect()
         except Exception as e:
-            self.logger.error(f"Erreur connexion BD: {e}", exc_info=True)
-            return False
+            self.logger.warning(
+                f"Base de données indisponible ({e}). "
+                f"Démarrage sans connexion — utilisez « ↓ Récupérer » "
+                f"pour charger une base."
+            )
+            self.db = None
+            return True
+
+        self.logger.info("✓ Connexion établie")
+
+        # La sauvegarde n'est plus créée au démarrage : elle est posée
+        # à la demande, juste avant la première modification de la base
+        # (voir DatabaseManager.backup_if_needed()).
+
+        # Vérifier le schéma
+        if not self.db.verify_schema():
+            self.logger.warning(
+                "Schéma Lyrion invalide : la base n'est pas une BD Lyrion "
+                "valide. Démarrage sans connexion."
+            )
+            try:
+                self.db.close()
+            except Exception:
+                pass
+            self.db = None
+            return True
+
+        self.logger.info("✓ Schéma vérifié")
+        return True
     
     def initialize_components(self) -> bool:
         """
