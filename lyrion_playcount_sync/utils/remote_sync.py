@@ -73,12 +73,23 @@ class RemoteSync:
             return False
 
         if self._remote_wal_present():
-            raise RemoteBusyError(
-                "La base distante a des fichiers WAL en attente "
-                "(persist.db-wal / -shm).\n\n"
-                "LMS est probablement encore en cours d'exécution ou s'est mal "
-                "arrêté. Arrêtez LMS sur l'hôte distant et réessayez."
+            # Lyrion peut avoir été tué sans flush propre (ex: `docker stop`
+            # SIGKILL après timeout). On tente un checkpoint TRUNCATE à distance
+            # pour fusionner le -wal dans persist.db et supprimer les fichiers
+            # temporaires avant d'abandonner.
+            logger.info(
+                "Fichiers WAL distants détectés — tentative de checkpoint..."
             )
+            if self._remote_checkpoint(sudo_password) and not self._remote_wal_present():
+                logger.info("✓ Checkpoint WAL distant réussi")
+            else:
+                raise RemoteBusyError(
+                    "La base distante a des fichiers WAL en attente "
+                    "(persist.db-wal / -shm) et le checkpoint distant a "
+                    "échoué.\n\n"
+                    "LMS est probablement encore en cours d'exécution. "
+                    "Arrêtez LMS sur l'hôte distant et réessayez."
+                )
 
         dest = str(Path(local_path))
         # Créer le répertoire parent si besoin
@@ -253,6 +264,68 @@ class RemoteSync:
             return result.returncode == 0
         except Exception as e:
             logger.warning(f"Vérification WAL distante impossible : {e}")
+            return False
+
+    def _remote_checkpoint(self, sudo_password: str | None = None) -> bool:
+        """
+        Exécute un `PRAGMA wal_checkpoint(TRUNCATE)` sur la BD distante via SSH.
+
+        Permet de récupérer les écritures laissées en WAL après un arrêt brutal
+        de Lyrion (ex: SIGKILL de `docker stop`). TRUNCATE fusionne les pages
+        en attente dans persist.db puis supprime -wal/-shm.
+
+        Si `use_sudo` est actif, la commande passe par `sudo -S` (nécessaire si
+        la BD appartient à squeezeboxserver et n'est pas accessible en écriture
+        à l'utilisateur SSH). sqlite3 doit être installé sur l'hôte distant.
+
+        Retourne True si le checkpoint s'est exécuté sans erreur. Un retour True
+        ne garantit pas que le -wal a disparu (un autre processus peut tenir la
+        BD) ; l'appelant doit revérifier via `_remote_wal_present()`.
+        """
+        if not shutil.which("ssh"):
+            return False
+
+        db = shlex.quote(self.config.db_path)
+        inner_cmd = f"sqlite3 {db} 'PRAGMA wal_checkpoint(TRUNCATE);'"
+        if self.config.use_sudo:
+            if not sudo_password:
+                logger.warning(
+                    "Checkpoint distant impossible : use_sudo actif mais aucun "
+                    "mot de passe sudo fourni."
+                )
+                return False
+            remote_cmd = f"sudo -S -p '' sh -c {shlex.quote(inner_cmd)}"
+        else:
+            remote_cmd = inner_cmd
+
+        ssh_cmd = [
+            "ssh",
+            "-p", str(self.config.ssh_port),
+            "-o", "BatchMode=yes",
+            "-o", f"ConnectTimeout={self.config.timeout}",
+            "-o", "StrictHostKeyChecking=no",
+            f"{self.config.user}@{self.config.host}",
+            remote_cmd,
+        ]
+        try:
+            result = subprocess.run(
+                ssh_cmd,
+                input=(sudo_password + "\n") if self.config.use_sudo and sudo_password else None,
+                capture_output=True,
+                text=True,
+                timeout=self.config.timeout + 10,
+            )
+            if result.returncode != 0:
+                err = result.stderr.strip() or result.stdout.strip()
+                logger.warning(f"Checkpoint distant a échoué : {err}")
+                return False
+            # Sortie attendue : "busy|log_pages|checkpointed_pages"
+            out = result.stdout.strip()
+            if out:
+                logger.info(f"Checkpoint distant : {out}")
+            return True
+        except Exception as e:
+            logger.warning(f"Checkpoint distant impossible : {e}")
             return False
 
     def upload(self, local_path: str, sudo_password: str | None = None) -> bool:

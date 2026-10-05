@@ -141,7 +141,11 @@ class DatabaseManager:
 
         cur = self.connection.cursor()
         try:
-            cur.execute("PRAGMA wal_checkpoint(FULL)")
+            # TRUNCATE fusionne les pages ET remet le fichier -wal à zéro
+            # (voire le supprime), contrairement à FULL qui laisse un -wal
+            # vide sur disque. Important : les vérifications de type
+            # `path.exists()` traitent un -wal de 0 octet comme "présent".
+            cur.execute("PRAGMA wal_checkpoint(TRUNCATE)")
             row = cur.fetchone()
         finally:
             cur.close()
