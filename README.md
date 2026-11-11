@@ -2,7 +2,27 @@
 
 **Outil desktop pour synchroniser les playcounts entre `tracks_persistent` et `alternativeplaycount` dans Lyrion** (anciennement Logitech Media Server).
 
-> **⚠️ IMPORTANT** : Arrêtez Lyrion avant toute synchronisation pour éviter la corruption de la base de données.
+> **➡️ Cet outil a un successeur.** Sa mécanique est maintenant intégrée à [music-librarian](https://github.com/werdeil/music-librarian), sous la forme de la commande `playcounts` et de la page **Lyrion** de son tableau de bord. Les évolutions se font là-bas ; ce dépôt reste disponible pour le cas décrit plus bas.
+
+## Passer à music-librarian
+
+| Ici | Dans music-librarian |
+|---|---|
+| Interface de bureau (Tk) | Page **Lyrion** du tableau de bord web, ou `music-librarian playcounts --review` dans un terminal |
+| Lyrion doit être arrêté | Lyrion peut rester en marche : une seule transaction courte, après une copie de sauvegarde |
+| Orphelins cherchés dans `tracks_persistent` | Orphelins cherchés dans les deux tables, pour les fichiers disparus de la bibliothèque |
+| Le compteur de l'orphelin remplace celui de la piste | Les compteurs s'additionnent, la lecture la plus récente et la note sont gardées |
+| Chaque rapprochement est validé à la main | Un déplacement journalisé ou un simple changement de casse est suivi sans question ; le reste attend une réponse |
+| « Ignorer » le temps de la session | Les réponses sont enregistrées, orphelins ignorés compris |
+| Rattrapage des compteurs à zéro | Repris, fait par défaut (`--no-backfill` pour le sauter) |
+| Recalcul de la DPSV | Repris, sur demande seulement (`--dpsv`) : la valeur n'est exacte que pour une piste jamais sautée |
+| Récupération et envoi de `persist.db` par SSH | Non repris : music-librarian lit la base sur place |
+
+Le détail est dans la [documentation de music-librarian](https://github.com/werdeil/music-librarian/blob/main/docs/lyrion.md#orphan-play-counts) (en anglais).
+
+**Quand garder cet outil** : si Lyrion tourne sur une autre machine que celle où vous travaillez et que vous n'utilisez pas music-librarian. Le transfert de `persist.db` par SSH n'existe qu'ici.
+
+> **⚠️ IMPORTANT** : avec cet outil, arrêtez Lyrion avant toute synchronisation pour éviter la corruption de la base de données.
 
 ## 📚 Documentation
 
