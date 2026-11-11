@@ -2,7 +2,7 @@
 
 **Outil desktop pour synchroniser les playcounts entre `tracks_persistent` et `alternativeplaycount` dans Lyrion** (anciennement Logitech Media Server).
 
-> **➡️ Cet outil a un successeur.** Sa mécanique est maintenant intégrée à [music-librarian](https://github.com/werdeil/music-librarian), sous la forme de la commande `playcounts` et de la page **Lyrion** de son tableau de bord. Les évolutions se font là-bas ; ce dépôt reste disponible pour le cas décrit plus bas.
+> **➡️ Cet outil a un successeur.** Sa mécanique est maintenant intégrée à [music-librarian](https://github.com/werdeil/music-librarian), sous la forme de la commande `playcounts` et de la page **Lyrion** de son tableau de bord. Ce dépôt est archivé : il reste lisible et installable, mais n'évolue plus, et les évolutions se font là-bas.
 
 ## Passer à music-librarian
 
@@ -20,7 +20,7 @@
 
 Le détail est dans la [documentation de music-librarian](https://github.com/werdeil/music-librarian/blob/main/docs/lyrion.md#orphan-play-counts) (en anglais).
 
-**Quand garder cet outil** : si Lyrion tourne sur une autre machine que celle où vous travaillez et que vous n'utilisez pas music-librarian. Le transfert de `persist.db` par SSH n'existe qu'ici.
+**Quand utiliser encore cet outil** : si Lyrion tourne sur une autre machine que celle où vous travaillez et que vous n'utilisez pas music-librarian. Le transfert de `persist.db` par SSH n'existe qu'ici.
 
 > **⚠️ IMPORTANT** : avec cet outil, arrêtez Lyrion avant toute synchronisation pour éviter la corruption de la base de données.
 
